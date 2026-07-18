@@ -2,7 +2,7 @@ name: Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [development]
   workflow_dispatch:
     inputs:
       environment:
@@ -16,8 +16,9 @@ permissions:
   contents: read
 
 jobs:
-  # Runs automatically on every merge to main. No manual approval — dev is
-  # the disposable, fast-feedback environment.
+  # Runs automatically on every merge to development. No manual approval —
+  # dev is the disposable, fast-feedback environment. Promotion to staging
+  # and prod is manual only (workflow_dispatch), gated behind main.
   deploy-dev:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
