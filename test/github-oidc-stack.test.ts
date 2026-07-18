@@ -24,6 +24,6 @@ describe("GitHubOidcStack", () => {
     // The sub claim pattern now includes wildcards around owner/repo to handle
     // GitHub's internal numeric IDs (e.g. "repo:example-org@123/example-repo@456:...").
     const json = JSON.stringify(template.toJSON());
-    expect(json).toContain("repo:example-org/*example-repo*:ref:refs/heads/main");
+    expect(json).toContain("repo:example-org*/example-repo*:ref:refs/heads/main");
   });
 });

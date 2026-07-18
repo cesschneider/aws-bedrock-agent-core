@@ -62,10 +62,12 @@ export class GitHubOidcStack extends cdk.Stack {
     });
 
     const [owner, repoName] = props.githubRepo.split("/");
-    // GitHub injects internal numeric IDs into the OIDC sub claim:
+    // GitHub injects internal numeric IDs after the owner and repo name in
+    // the OIDC sub claim:
     // "repo:cesschneider@46808/aws-bedrock-agent-core@1304470098:ref:refs/heads/main"
-    // Wildcards around the owner and repo name ensure StringLike matches.
-    const repoPattern = `repo:${owner}/*${repoName}*`;
+    // Wildcards immediately after the owner and repo name match the IDs:
+    // "repo:cesschneider*/aws-bedrock-agent-core*:..."
+    const repoPattern = `repo:${owner}*/${repoName}*`;
 
     // Branch-based claims (push, pull_request triggers without environments).
     const branchClaims = props.allowedRefs.map((ref) => `${repoPattern}:${ref}`);
