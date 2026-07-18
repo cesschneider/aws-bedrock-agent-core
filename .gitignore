@@ -1,0 +1,10 @@
+node_modules/
+dist/
+cdk.out/
+*.js
+!jest.config.js
+!eslint.config.js
+*.d.ts
+.env
+.env.*
+coverage/
