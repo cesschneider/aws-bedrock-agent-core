@@ -8,7 +8,7 @@ describe("Identity", () => {
     const stack = new cdk.Stack(app, "TestStack", { env: { account: "123456789012", region: "us-east-1" } });
     new Identity(stack, "Identity", {
       envName: "dev",
-      googleClientSecretParam: "/rag-knowledge-agent/dev/google-client-secret",
+      googleClientSecret: "test-client-secret",
       googleClientId: "test-client-id.apps.googleusercontent.com",
       googleServiceAccountKeyParam: "/rag-knowledge-agent/dev/google-service-account-key",
       googleWorkspaceAdminEmail: "admin@company.com",

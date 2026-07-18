@@ -5,7 +5,10 @@ import { RagKnowledgeAgentStack } from "../lib/rag-knowledge-agent-stack";
 describe("RagKnowledgeAgentStack", () => {
   it.each(["dev", "stg", "prd"])("synthesizes for env=%s with correct tags", (envName) => {
     const app = new cdk.App();
-    const stack = new RagKnowledgeAgentStack(app, `TestStack-${envName}`, { envName });
+    const stack = new RagKnowledgeAgentStack(app, `TestStack-${envName}`, {
+      envName,
+      googleClientSecretOverride: "test-client-secret",
+    });
     const template = Template.fromStack(stack);
 
     expect(stack.envName).toBe(envName);

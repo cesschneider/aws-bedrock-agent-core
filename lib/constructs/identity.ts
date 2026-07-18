@@ -10,11 +10,12 @@ import * as path from "path";
 export interface IdentityProps {
   envName: string;
   /**
-   * SSM parameter name (SecureString) holding the Google OAuth client
-   * secret. Populated manually via the Google Cloud Console OAuth
-   * credentials page — see docs/deployment-setup.md.
+   * Google OAuth client secret. Must be resolved BEFORE passing to this
+   * construct (e.g. via ssm.StringParameter.valueFromLookup in the parent
+   * stack) because Cognito's UserPoolIdentityProvider rejects CloudFormation
+   * dynamic references ({{resolve:ssm-secure:...}}) in client_secret.
    */
-  googleClientSecretParam: string;
+  googleClientSecret: string;
   /** Google OAuth client ID (not secret, safe as a plain prop). */
   googleClientId: string;
   /** SSM parameter name (SecureString) holding the Workspace service account key JSON. */
@@ -91,12 +92,12 @@ export class Identity extends Construct {
       cognito.LambdaVersion.V2_0
     );
 
-    const googleClientSecret = cdk.SecretValue.ssmSecure(props.googleClientSecretParam);
-
+    // Resolved upstream via ssm.StringParameter.valueFromLookup — Cognito
+    // does not support CFN dynamic references in client_secret.
     const googleIdp = new cognito.UserPoolIdentityProviderGoogle(this, "GoogleIdentityProvider", {
       userPool: this.userPool,
       clientId: props.googleClientId,
-      clientSecretValue: googleClientSecret,
+      clientSecretValue: cdk.SecretValue.unsafePlainText(props.googleClientSecret),
       scopes: ["email", "profile", "openid"],
       attributeMapping: {
         email: cognito.ProviderAttribute.GOOGLE_EMAIL,

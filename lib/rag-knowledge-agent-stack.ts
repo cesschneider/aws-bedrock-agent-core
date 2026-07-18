@@ -1,5 +1,6 @@
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
+import * as ssm from "aws-cdk-lib/aws-ssm";
 import { UploadPipeline } from "./constructs/upload-pipeline";
 import { KbSync } from "./constructs/kb-sync";
 import { ConversationHistory } from "./constructs/conversation-history";
@@ -8,6 +9,12 @@ import { Identity } from "./constructs/identity";
 export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
   /** Deployment environment slug: dev | stg | prd */
   envName: string;
+  /**
+   * Optional pre-resolved Google OAuth client secret. If omitted, the stack
+   * resolves it at synthesis time via ssm.StringParameter.valueFromLookup.
+   * Useful in tests where SSM context resolution isn't available.
+   */
+  googleClientSecretOverride?: string;
 }
 
 /**
@@ -51,12 +58,19 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
     // Google OAuth client ID/secret and the Workspace admin service account
     // key are created manually (Google Cloud Console / Workspace Admin
     // console — see docs/deployment-setup.md) and stored in SSM per
-    // environment. These parameter names/placeholders let the stack synth
-    // independently of that manual setup having happened yet.
+    // environment. The client secret is resolved at synthesis time
+    // (valueFromLookup) because Cognito's UserPoolIdentityProvider rejects
+    // CloudFormation dynamic references ({{resolve:ssm-secure:...}}).
+    const googleClientSecret = props.googleClientSecretOverride ??
+      ssm.StringParameter.valueFromLookup(
+        this,
+        `/rag-knowledge-agent/${this.envName}/google-client-secret`
+      );
+
     this.identity = new Identity(this, "Identity", {
       envName: this.envName,
       googleClientId: "PENDING-GOOGLE-OAUTH-CLIENT-ID",
-      googleClientSecretParam: `/rag-knowledge-agent/${this.envName}/google-client-secret`,
+      googleClientSecret,
       googleServiceAccountKeyParam: `/rag-knowledge-agent/${this.envName}/google-service-account-key`,
       googleWorkspaceAdminEmail: `admin@${this.envName}.pending-setup.invalid`,
     });
