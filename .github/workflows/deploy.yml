@@ -1,0 +1,63 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy (staging or prod)"
+        required: true
+        type: choice
+        options: [staging, prod]
+
+permissions:
+  id-token: write # required for OIDC — no AWS access keys are stored in GitHub
+  contents: read
+
+jobs:
+  # Runs automatically on every merge to main. No manual approval — dev is
+  # the disposable, fast-feedback environment.
+  deploy-dev:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: npm ci
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: cdk deploy (dev)
+        run: npx cdk deploy --require-approval never --context env=dev
+        env:
+          RAG_ENV: dev
+
+  # Manual promotion only — triggered via workflow_dispatch. Gate this with
+  # GitHub Environment protection rules (required reviewers) in the repo's
+  # Settings > Environments for "staging" and "prod". See CLAUDE.md for the
+  # one-time setup this depends on.
+  deploy-manual:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: npm ci
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: cdk deploy
+        run: npx cdk deploy --require-approval never --context env=${{ github.event.inputs.environment }}
+        env:
+          RAG_ENV: ${{ github.event.inputs.environment }}
