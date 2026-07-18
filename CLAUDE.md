@@ -9,13 +9,18 @@ CDK (TypeScript) infra + Lambda backend for the internal RAG knowledge agent (se
 - `npm test` — Jest unit tests (`test/**/*.test.ts`, `lambda/**/*.test.ts`)
 - `npx cdk synth` — synthesize CloudFormation without deploying
 
-All four run in CI (`.github/workflows/ci.yml`) on every PR to `main` and must pass before merge.
+All four run in CI (`.github/workflows/ci.yml`) on every PR to `development`, `staging`, or `main` and must pass before merge.
 
 ## Deployment
 
-Deploys happen exclusively via GitHub Actions (`.github/workflows/deploy.yml`) — `cdk deploy` should never be run from a local machine against a real environment. Each environment (dev/staging/prod) is a separate AWS account with its own OIDC deploy role; no AWS access keys are stored in GitHub. See `docs/deployment-setup.md` for the one-time per-account setup and `lib/bootstrap/github-oidc-stack.ts` for what it deploys.
+Deploys happen exclusively via GitHub Actions (`.github/workflows/deploy.yml`) — `cdk deploy` should never be run from a local machine against a real environment. Branch → environment mapping: `development`→`dev` (auto-deploy), `staging`→`stg` (auto-deploy), `main`→`prd` (gated). Each environment (dev/stg/prd) is a separate AWS account with its own OIDC deploy role; no AWS access keys are stored in GitHub. See `docs/deployment-setup.md` for the one-time per-account setup and `lib/bootstrap/github-oidc-stack.ts` for what it deploys.
 
 AWS credentials used for local `cdk synth` / testing must be a scoped IAM user/role, never root.
+
+Local AWS profiles follow the convention `eworkslabs-<env-slug>`:
+- `eworkslabs-dev` — development environment
+- `eworkslabs-stg` — staging environment
+- `eworkslabs-prd` — production environment
 
 # gstack
 

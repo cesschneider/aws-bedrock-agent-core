@@ -2,25 +2,22 @@ name: Deploy
 
 on:
   push:
-    branches: [development]
+    branches: [development, staging, main]
   workflow_dispatch:
     inputs:
       environment:
-        description: "Environment to deploy (staging or prod)"
+        description: "Environment to deploy"
         required: true
         type: choice
-        options: [staging, prod]
+        options: [dev, stg, prd]
 
 permissions:
-  id-token: write # required for OIDC — no AWS access keys are stored in GitHub
+  id-token: write
   contents: read
 
 jobs:
-  # Runs automatically on every merge to development. No manual approval —
-  # dev is the disposable, fast-feedback environment. Promotion to staging
-  # and prod is manual only (workflow_dispatch), gated behind main.
   deploy-dev:
-    if: github.event_name == 'push'
+    if: github.ref == 'refs/heads/development'
     runs-on: ubuntu-latest
     environment: dev
     steps:
@@ -39,14 +36,10 @@ jobs:
         env:
           RAG_ENV: dev
 
-  # Manual promotion only — triggered via workflow_dispatch. Gate this with
-  # GitHub Environment protection rules (required reviewers) in the repo's
-  # Settings > Environments for "staging" and "prod". See CLAUDE.md for the
-  # one-time setup this depends on.
-  deploy-manual:
-    if: github.event_name == 'workflow_dispatch'
+  deploy-stg:
+    if: github.ref == 'refs/heads/staging'
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment }}
+    environment: stg
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -58,7 +51,27 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
-      - name: cdk deploy
-        run: npx cdk deploy --require-approval never --context env=${{ github.event.inputs.environment }}
+      - name: cdk deploy (stg)
+        run: npx cdk deploy --require-approval never --context env=stg
         env:
-          RAG_ENV: ${{ github.event.inputs.environment }}
+          RAG_ENV: stg
+
+  deploy-prd:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: prd
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: npm ci
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: cdk deploy (prd)
+        run: npx cdk deploy --require-approval never --context env=prd
+        env:
+          RAG_ENV: prd

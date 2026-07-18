@@ -7,7 +7,7 @@ import * as logs from "aws-cdk-lib/aws-logs";
 import * as path from "path";
 
 function retentionFor(envName: string): logs.RetentionDays {
-  return envName === "prod" ? logs.RetentionDays.ONE_MONTH : logs.RetentionDays.TWO_WEEKS;
+  return envName === "prd" ? logs.RetentionDays.ONE_MONTH : logs.RetentionDays.TWO_WEEKS;
 }
 
 export interface UploadPipelineProps {
@@ -38,13 +38,13 @@ export class UploadPipeline extends Construct {
       encryption: s3.BucketEncryption.S3_MANAGED,
       enforceSSL: true,
       removalPolicy:
-        props.envName === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: props.envName !== "prod",
+        props.envName === "prd" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: props.envName !== "prd",
     });
 
     const logGroup = new logs.LogGroup(this, "UploadHandlerLogGroup", {
       retention: retentionFor(props.envName),
-      removalPolicy: props.envName === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: props.envName === "prd" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
     });
 
     this.uploadHandler = new lambdaNode.NodejsFunction(this, "UploadHandler", {

@@ -28,8 +28,8 @@ export class ConversationHistory extends Construct {
       sortKey: { name: "turnId", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: "expiresAt",
-      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: props.envName === "prod" },
-      removalPolicy: props.envName === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: props.envName === "prd" },
+      removalPolicy: props.envName === "prd" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
     });
   }
 }

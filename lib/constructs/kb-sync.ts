@@ -26,7 +26,7 @@ export interface KbSyncProps {
 }
 
 function retentionFor(envName: string): logs.RetentionDays {
-  return envName === "prod" ? logs.RetentionDays.ONE_MONTH : logs.RetentionDays.TWO_WEEKS;
+  return envName === "prd" ? logs.RetentionDays.ONE_MONTH : logs.RetentionDays.TWO_WEEKS;
 }
 
 /**
@@ -49,7 +49,7 @@ export class KbSync extends Construct {
       partitionKey: { name: "dedupeKey", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: "expiresAt",
-      removalPolicy: props.envName === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: props.envName === "prd" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
     });
 
     this.dlq = new sqs.Queue(this, "IngestionDlq", {
@@ -59,7 +59,7 @@ export class KbSync extends Construct {
 
     const logGroup = new logs.LogGroup(this, "KbSyncTriggerLogGroup", {
       retention: retentionFor(props.envName),
-      removalPolicy: props.envName === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: props.envName === "prd" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
     });
 
     this.trigger = new lambdaNode.NodejsFunction(this, "KbSyncTrigger", {

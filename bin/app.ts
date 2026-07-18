@@ -6,7 +6,7 @@ import { RagKnowledgeAgentStack } from "../lib/rag-knowledge-agent-stack";
 const app = new cdk.App();
 
 const envName = app.node.tryGetContext("env") ?? process.env.RAG_ENV ?? "dev";
-const validEnvs = ["dev", "staging", "prod"];
+const validEnvs = ["dev", "stg", "prd"];
 if (!validEnvs.includes(envName)) {
   throw new Error(`Invalid env "${envName}" — must be one of: ${validEnvs.join(", ")}`);
 }

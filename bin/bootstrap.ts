@@ -7,10 +7,11 @@ const app = new cdk.App();
 
 new GitHubOidcStack(app, "GitHubOidcBootstrap", {
   githubRepo: "cesschneider/aws-bedrock-agent-core",
-  // Only main branch pushes may assume this role — PRs from forks or other
-  // branches cannot deploy. Tighten further (e.g. environment: prod) if you
-  // add a separate prod-specific role later.
-  allowedRefs: ["ref:refs/heads/main"],
+  // Branch → environment mapping: development→dev, staging→stg, main→prd.
+  // Only explicit branch pushes and matched environment claims may assume
+  // this role — PRs from forks or other branches cannot deploy.
+  allowedRefs: ["ref:refs/heads/main", "ref:refs/heads/development", "ref:refs/heads/staging"],
+  environments: ["dev", "stg", "prd"],
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     region: process.env.CDK_DEFAULT_REGION ?? "us-east-1",

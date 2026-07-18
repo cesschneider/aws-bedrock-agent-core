@@ -6,7 +6,7 @@ import { ConversationHistory } from "./constructs/conversation-history";
 import { Identity } from "./constructs/identity";
 
 export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
-  /** Deployment environment name: dev | staging | prod */
+  /** Deployment environment slug: dev | stg | prd */
   envName: string;
 }
 

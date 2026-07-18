@@ -24,7 +24,7 @@ export interface IdentityProps {
 }
 
 function retentionFor(envName: string): logs.RetentionDays {
-  return envName === "prod" ? logs.RetentionDays.ONE_MONTH : logs.RetentionDays.TWO_WEEKS;
+  return envName === "prd" ? logs.RetentionDays.ONE_MONTH : logs.RetentionDays.TWO_WEEKS;
 }
 
 /**
@@ -47,7 +47,7 @@ export class Identity extends Construct {
 
     const logGroup = new logs.LogGroup(this, "PreTokenGenerationLogGroup", {
       retention: retentionFor(props.envName),
-      removalPolicy: props.envName === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: props.envName === "prd" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
     });
 
     const preTokenGeneration = new lambdaNode.NodejsFunction(this, "PreTokenGeneration", {
@@ -79,7 +79,7 @@ export class Identity extends Construct {
       userPoolName: `rag-knowledge-agent-${props.envName}`,
       selfSignUpEnabled: false, // identity is federated from Google Workspace only
       signInAliases: { email: true },
-      removalPolicy: props.envName === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: props.envName === "prd" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
     });
 
     // V2_0 is required (not V1_0) so the trigger can use groupOverrideDetails

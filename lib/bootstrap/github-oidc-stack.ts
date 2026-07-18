@@ -6,12 +6,26 @@ export interface GitHubOidcStackProps extends cdk.StackProps {
   /** e.g. "cesschneider/aws-bedrock-agent-core" */
   githubRepo: string;
   /**
-   * Branch/environment refs allowed to assume this role, e.g.
+   * Branch refs allowed to assume this role, e.g.
    * ["ref:refs/heads/main"]. Keep this narrow — this role can deploy
    * infrastructure, it should not be assumable from arbitrary branches
    * or forks/PRs.
+   *
+   * Note: the trust policy automatically adds wildcards around the
+   * repo owner/repo name because GitHub injects internal numeric IDs
+   * into the OIDC token sub claim (e.g.
+   * "repo:cesschneider@46808/aws-bedrock-agent-core@1304470098:ref:refs/heads/main").
+   * Without wildcards, StringLike would never match.
    */
   allowedRefs: string[];
+  /**
+   * GitHub Environment names whose deploy jobs are allowed to assume this
+   * role, e.g. ["dev", "stg", "prd"]. When a workflow job declares
+   * `environment: <name>`, GitHub emits an `environment:<name>` sub claim
+   * instead of the branch-based `ref:refs/heads/...` claim — both must be
+   * in the trust policy for deploys to work.
+   */
+  environments?: string[];
 }
 
 /**
@@ -47,6 +61,21 @@ export class GitHubOidcStack extends cdk.Stack {
       clientIds: ["sts.amazonaws.com"],
     });
 
+    const [owner, repoName] = props.githubRepo.split("/");
+    // GitHub injects internal numeric IDs into the OIDC sub claim:
+    // "repo:cesschneider@46808/aws-bedrock-agent-core@1304470098:ref:refs/heads/main"
+    // Wildcards around the owner and repo name ensure StringLike matches.
+    const repoPattern = `repo:${owner}/*${repoName}*`;
+
+    // Branch-based claims (push, pull_request triggers without environments).
+    const branchClaims = props.allowedRefs.map((ref) => `${repoPattern}:${ref}`);
+
+    // Environment-based claims (workflow jobs with `environment: <name>`).
+    const envClaims =
+      props.environments?.map((env) => `${repoPattern}:environment:${env}`) ?? [];
+
+    const subClaims = [...branchClaims, ...envClaims];
+
     this.deployRole = new iam.Role(this, "GitHubActionsDeployRole", {
       roleName: "github-actions-rag-knowledge-agent-deploy",
       assumedBy: new iam.WebIdentityPrincipal(provider.openIdConnectProviderArn, {
@@ -54,9 +83,7 @@ export class GitHubOidcStack extends cdk.Stack {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
         },
         StringLike: {
-          "token.actions.githubusercontent.com:sub": props.allowedRefs.map(
-            (ref) => `repo:${props.githubRepo}:${ref}`
-          ),
+          "token.actions.githubusercontent.com:sub": subClaims,
         },
       }),
       description: "Assumed by GitHub Actions to deploy the RAG knowledge agent via CDK",

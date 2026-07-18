@@ -3,7 +3,7 @@ import { Template } from "aws-cdk-lib/assertions";
 import { RagKnowledgeAgentStack } from "../lib/rag-knowledge-agent-stack";
 
 describe("RagKnowledgeAgentStack", () => {
-  it.each(["dev", "staging", "prod"])("synthesizes for env=%s with correct tags", (envName) => {
+  it.each(["dev", "stg", "prd"])("synthesizes for env=%s with correct tags", (envName) => {
     const app = new cdk.App();
     const stack = new RagKnowledgeAgentStack(app, `TestStack-${envName}`, { envName });
     const template = Template.fromStack(stack);
@@ -16,7 +16,7 @@ describe("RagKnowledgeAgentStack", () => {
   it("rejects an invalid environment name at the app level", () => {
     // The validation lives in bin/app.ts; this test documents the expected
     // contract so a future refactor that drops it fails loudly.
-    const validEnvs = ["dev", "staging", "prod"];
+    const validEnvs = ["dev", "stg", "prd"];
     expect(validEnvs.includes("not-a-real-env")).toBe(false);
   });
 });
