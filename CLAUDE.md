@@ -13,7 +13,9 @@ All four run in CI (`.github/workflows/ci.yml`) on every PR to `main` and must p
 
 ## Deployment
 
-AWS credentials for this project must be a scoped IAM user/role, never root. Confirm `aws sts get-caller-identity` shows a non-root ARN before running `cdk deploy`.
+Deploys happen exclusively via GitHub Actions (`.github/workflows/deploy.yml`) — `cdk deploy` should never be run from a local machine against a real environment. Each environment (dev/staging/prod) is a separate AWS account with its own OIDC deploy role; no AWS access keys are stored in GitHub. See `docs/deployment-setup.md` for the one-time per-account setup and `lib/bootstrap/github-oidc-stack.ts` for what it deploys.
+
+AWS credentials used for local `cdk synth` / testing must be a scoped IAM user/role, never root.
 
 # gstack
 
