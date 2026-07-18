@@ -2,6 +2,7 @@ import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import { UploadPipeline } from "./constructs/upload-pipeline";
 import { KbSync } from "./constructs/kb-sync";
+import { ConversationHistory } from "./constructs/conversation-history";
 
 export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
   /** Deployment environment name: dev | staging | prod */
@@ -19,6 +20,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
   public readonly envName: string;
   public readonly uploadPipeline: UploadPipeline;
   public readonly kbSync: KbSync;
+  public readonly conversationHistory: ConversationHistory;
 
   constructor(scope: Construct, id: string, props: RagKnowledgeAgentStackProps) {
     super(scope, id, props);
@@ -38,6 +40,10 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
       // blocked on the Phase 0 S3 Vectors spike) supplies the real IDs.
       knowledgeBaseId: "PENDING-KB-CONSTRUCT",
       dataSourceId: "PENDING-DATA-SOURCE-CONSTRUCT",
+    });
+
+    this.conversationHistory = new ConversationHistory(this, "ConversationHistory", {
+      envName: this.envName,
     });
   }
 }
