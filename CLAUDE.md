@@ -1,3 +1,20 @@
+# RAG Knowledge Agent
+
+CDK (TypeScript) infra + Lambda backend for the internal RAG knowledge agent (see `specs/rag-knowledge-agent-spec.md`). Frontend lives in a separate repo.
+
+## Testing
+
+- `npm run typecheck` — TypeScript type-check, no emit
+- `npm run lint` — ESLint (flat config)
+- `npm test` — Jest unit tests (`test/**/*.test.ts`, `lambda/**/*.test.ts`)
+- `npx cdk synth` — synthesize CloudFormation without deploying
+
+All four run in CI (`.github/workflows/ci.yml`) on every PR to `main` and must pass before merge.
+
+## Deployment
+
+AWS credentials for this project must be a scoped IAM user/role, never root. Confirm `aws sts get-caller-identity` shows a non-root ARN before running `cdk deploy`.
+
 # gstack
 
 Use the `/browse` skill from gstack for all web browsing. Never use `mcp__claude-in-chrome__*` tools.
