@@ -3,6 +3,7 @@ import { Construct } from "constructs";
 import { UploadPipeline } from "./constructs/upload-pipeline";
 import { KbSync } from "./constructs/kb-sync";
 import { ConversationHistory } from "./constructs/conversation-history";
+import { Identity } from "./constructs/identity";
 
 export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
   /** Deployment environment name: dev | staging | prod */
@@ -21,6 +22,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
   public readonly uploadPipeline: UploadPipeline;
   public readonly kbSync: KbSync;
   public readonly conversationHistory: ConversationHistory;
+  public readonly identity: Identity;
 
   constructor(scope: Construct, id: string, props: RagKnowledgeAgentStackProps) {
     super(scope, id, props);
@@ -44,6 +46,19 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
 
     this.conversationHistory = new ConversationHistory(this, "ConversationHistory", {
       envName: this.envName,
+    });
+
+    // Google OAuth client ID/secret and the Workspace admin service account
+    // key are created manually (Google Cloud Console / Workspace Admin
+    // console — see docs/deployment-setup.md) and stored in SSM per
+    // environment. These parameter names/placeholders let the stack synth
+    // independently of that manual setup having happened yet.
+    this.identity = new Identity(this, "Identity", {
+      envName: this.envName,
+      googleClientId: "PENDING-GOOGLE-OAUTH-CLIENT-ID",
+      googleClientSecretParam: `/rag-knowledge-agent/${this.envName}/google-client-secret`,
+      googleServiceAccountKeyParam: `/rag-knowledge-agent/${this.envName}/google-service-account-key`,
+      googleWorkspaceAdminEmail: `admin@${this.envName}.pending-setup.invalid`,
     });
   }
 }
