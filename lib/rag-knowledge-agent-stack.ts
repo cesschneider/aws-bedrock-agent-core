@@ -1,5 +1,6 @@
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
+import { UploadPipeline } from "./constructs/upload-pipeline";
 
 export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
   /** Deployment environment name: dev | staging | prod */
@@ -15,6 +16,7 @@ export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
  */
 export class RagKnowledgeAgentStack extends cdk.Stack {
   public readonly envName: string;
+  public readonly uploadPipeline: UploadPipeline;
 
   constructor(scope: Construct, id: string, props: RagKnowledgeAgentStackProps) {
     super(scope, id, props);
@@ -22,5 +24,9 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
 
     cdk.Tags.of(this).add("project", "rag-knowledge-agent");
     cdk.Tags.of(this).add("environment", this.envName);
+
+    this.uploadPipeline = new UploadPipeline(this, "UploadPipeline", {
+      envName: this.envName,
+    });
   }
 }
