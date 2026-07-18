@@ -44,9 +44,10 @@ flowchart TD
     end
 
     subgraph Query Path
-        APIGW[API Gateway]
-        LCHAT[Lambda: chat-handler]
-        AC[Bedrock AgentCore Agent]
+        APIGW[HTTP API<br/>auth + upload endpoints]
+        LCHAT[Lambda Function URL<br/>chat-handler, RESPONSE_STREAM]
+        AC[Bedrock AgentCore Agent<br/>Nova Pro]
+        DDB[(DynamoDB<br/>conversation history)]
     end
 
     FE -- auth --> COG
@@ -55,11 +56,13 @@ flowchart TD
     S3IN --> S3EVT --> LSYNC --> KB
     KB --> VS
 
-    FE -- question + JWT --> APIGW --> LCHAT
+    FE -- question + JWT --> LCHAT
     LCHAT -- validates dept claim --> COG
     LCHAT -- retrieve+generate<br/>metadata filter: department --> AC
     AC --> KB
-    AC -- grounded answer --> LCHAT --> FE
+    AC -- session/short-term state --> AC
+    LCHAT -- persist turn --> DDB
+    AC -- streamed grounded answer --> LCHAT --> FE
 ```
 
 ## 4. Components
@@ -79,16 +82,17 @@ flowchart TD
 ### 4.3 Ingestion path
 - S3 `ObjectCreated` event → `kb-sync-trigger` Lambda.
 - Lambda writes a `<filename>.metadata.json` sidecar (Bedrock KB convention) containing `{"metadataAttributes": {"department": "<dept>"}}` alongside the object, then calls `StartIngestionJob` on the Bedrock Knowledge Base data source.
-- Bedrock KB handles chunking, embedding, and upsert into the vector store (OpenSearch Serverless, AWS-managed default).
+- Bedrock KB handles **semantic chunking**, embedding (**Amazon Titan Embeddings**), and upsert into the vector store (**Amazon S3 Vectors** — chosen over OpenSearch Serverless to avoid its OCU cost floor at this launch scale; confirm current Bedrock KB support level for S3 Vectors before implementation, since it's a newer integration).
 - Batching consideration: bursty uploads could trigger many overlapping `StartIngestionJob` calls — Bedrock KB queues/serializes ingestion jobs per data source, but we should debounce (e.g. SQS + short delay window) if upload volume is high. Not a concern at the confirmed launch scale (< 500 docs, < 50 users) — revisit if volume grows.
 - **Failure handling**: on parse/ingestion failure, retry with backoff; if retries are exhausted, route to a dead-letter queue (SQS DLQ) for manual review. Exact retry count/backoff and whether the uploader or an ops channel gets notified on DLQ landing is still to be defined during implementation (see [questionnaire](./rag-knowledge-agent-questionnaire.md), Q4).
 
 ### 4.4 Query path
-- Frontend sends question + Cognito ID token to API Gateway (JWT authorizer validates token, extracts department claim(s)).
-- `chat-handler` Lambda invokes the Bedrock AgentCore agent, passing the user's department(s) **plus `company-wide`** as a **retrieval metadata filter** (`department IN (user's departments + "company-wide")`), so retrieval-augmented generation only pulls chunks tagged for departments the user belongs to (or company-wide docs).
-- AgentCore agent performs retrieve-and-generate against the Knowledge Base with that filter applied, returns grounded answer with citations.
-- `chat-handler` persists the turn to a **per-user conversation store** (DynamoDB, keyed by user ID) so context carries across sessions, not just within one chat session. Retention/TTL policy TBD.
-- `chat-handler` returns the answer + source document citations to the frontend. For each citation, it generates a **presigned download URL** to the original S3 object, re-validating the requesting user's department access at link-generation time (not just at query time) — so a user who has since lost department access can't use a stale citation link.
+- Frontend sends question + Cognito ID token to a **Lambda Function URL** (`chat-handler`, invoke mode `RESPONSE_STREAM`) — not the HTTP API, which handles only upload/auth. The Function URL streams the answer back token-by-token.
+- `chat-handler` validates the JWT itself (no built-in API Gateway JWT authorizer on Function URLs) and extracts department claim(s).
+- `chat-handler` invokes the Bedrock AgentCore agent (**Amazon Nova Pro**), passing the user's department(s) **plus `company-wide`** as a **retrieval metadata filter** (`department IN (user's departments + "company-wide")`), so retrieval-augmented generation only pulls chunks tagged for departments the user belongs to (or company-wide docs).
+- AgentCore agent performs retrieve-and-generate against the Knowledge Base with that filter applied, streaming the grounded answer with citations back through `chat-handler`.
+- **Session/memory (hybrid)**: AgentCore's native session/memory holds short-term, in-session state for the current turn sequence. `chat-handler` separately persists each turn to a **per-user conversation store** (DynamoDB, keyed by user ID) so context carries across sessions long-term. The exact handoff between AgentCore's session state and DynamoDB is an implementation detail to work out (spike needed); retention/TTL policy for DynamoDB is also still TBD.
+- `chat-handler` streams the answer + source document citations to the frontend. For each citation, it generates a **presigned download URL** to the original S3 object, re-validating the requesting user's department access at link-generation time (not just at query time) — so a user who has since lost department access can't use a stale citation link.
 
 ### 4.5 Frontend
 - Web chat UI (React or similar), login via Cognito Hosted UI federated to Google Workspace.
@@ -105,6 +109,28 @@ flowchart TD
 | Supported file types | `.pdf`, `.docx`, `.txt`, `.pptx` (Bedrock KB default parsers) |
 | Conversation store | DynamoDB, keyed by user ID (persistent across sessions) |
 | Environments | `dev`, `staging`, `prod` — account structure (single vs. multi-account) TBD |
+| Generation model | Amazon Nova Pro (via Bedrock) |
+| Embedding model | Amazon Titan Embeddings |
+| Vector store | Amazon S3 Vectors |
+| Chunking | Semantic chunking (Bedrock KB) |
+
+## 5a. Technology Stack
+
+Resolved via the [technical decisions questionnaire](./rag-knowledge-agent-tech-questionnaire.md) on 2026-07-18:
+
+| Concern | Decision |
+|---|---|
+| IaC | AWS CDK (TypeScript) |
+| Lambda language | TypeScript / Node.js |
+| Repo structure | Split — this repo holds infra + backend; frontend is a separate repo |
+| API (upload/auth) | API Gateway HTTP API |
+| API (chat) | Lambda Function URL, `RESPONSE_STREAM` invoke mode (streaming) |
+| Observability | CloudWatch Logs/Metrics + AWS X-Ray tracing |
+| CI/CD | GitHub Actions |
+| Testing | Unit tests (mocked AWS SDK) for v1; expand later |
+| Secrets | SSM Parameter Store (SecureString) |
+| Rate limiting | Default API Gateway/account limits only for v1 |
+| Agent session/memory | Hybrid — AgentCore native for short-term session state, DynamoDB for long-term cross-session persistence |
 
 ## 6. Security Considerations
 - All access to S3 and the Knowledge Base is via Lambda execution roles — no direct client access to S3 or Bedrock.
@@ -117,12 +143,17 @@ flowchart TD
 
 All items from the original open-questions list were answered via the [questionnaire](./rag-knowledge-agent-questionnaire.md) on 2026-07-18 and are reflected in the sections above (identity/federation in 4.1, company-wide docs in 4.2/4.4, multi-department union in 4.1/4.4, ingestion retry/DLQ in 4.3, conversation persistence in 4.4, citations in 4.4, environments in 5, launch scale below).
 
+All technical implementation questions were likewise answered via the [technical decisions questionnaire](./rag-knowledge-agent-tech-questionnaire.md) on 2026-07-18 and are reflected in section 5a and throughout section 4.
+
 **Remaining sub-decisions** (not blocking, to resolve during implementation):
 - Google Workspace OIDC app registration details and exact Workspace-group-to-department naming convention.
 - DLQ retry count/backoff, and whether the uploader or an ops channel is notified when a document lands in the DLQ.
 - Conversation history retention/TTL policy in DynamoDB.
 - Account structure for dev/staging/prod — single AWS account with environment-prefixed resources vs. separate accounts per environment.
-- Document growth rate and query volume were not estimated — launch scale is confirmed small (< 500 docs, < 50 users), which keeps OpenSearch Serverless and Lambda sizing low-risk for v1, but growth-rate estimates would help set autoscaling/cost alarms.
+- Document growth rate and query volume were not estimated — launch scale is confirmed small (< 500 docs, < 50 users), which keeps vector store and Lambda sizing low-risk for v1, but growth-rate estimates would help set autoscaling/cost alarms.
+- Confirm Bedrock Knowledge Base's current support level for **Amazon S3 Vectors** as a backend before writing infra code — newer integration than OpenSearch Serverless, worth a quick validation spike.
+- Define the exact AgentCore-session-to-DynamoDB handoff mechanism (hybrid session/memory) — needs a short implementation spike.
+- Define the dev/staging/prod GitHub Actions promotion flow (auto-deploy vs. manual approval gate before prod).
 
 ## 8. Launch Scale (confirmed)
 
