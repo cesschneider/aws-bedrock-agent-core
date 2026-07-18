@@ -111,7 +111,7 @@ flowchart TD
 
 | Item | Convention |
 |---|---|
-| S3 bucket | `raw-documents` (per-environment: `raw-documents-dev`, `-staging`, `-prod`) |
+| S3 bucket | `raw-documents-{env}-{accountId}` (account ID suffix avoids global S3 bucket-name collisions) |
 | Object key | `{department}/{uuid}-{original-filename}`, `{department}` may be `company-wide` |
 | KB metadata sidecar | `{key}.metadata.json` → `{"metadataAttributes": {"department": "<dept>"}}` |
 | Department claim source | Google Workspace group → Cognito group claim, e.g. `dept-engineering`, `dept-finance`, plus reserved `company-wide` |
@@ -158,7 +158,7 @@ All technical implementation questions were likewise answered via the [technical
 - Google Workspace OIDC app registration details and exact Workspace-group-to-department naming convention.
 - DLQ retry count/backoff, and whether the uploader or an ops channel is notified when a document lands in the DLQ.
 - Conversation history retention/TTL policy in DynamoDB.
-- Account structure for dev/staging/prod — single AWS account with environment-prefixed resources vs. separate accounts per environment.
+- **Resolved (2026-07-18):** Account structure is **separate AWS accounts per environment** (dev, staging, prod each isolated), not a single shared account. GitHub Actions deploys to each via its own OIDC role/environment. See `docs/deployment-setup.md` for the setup guide.
 - Document growth rate and query volume were not estimated — launch scale is confirmed small (< 500 docs, < 50 users), which keeps vector store and Lambda sizing low-risk for v1, but growth-rate estimates would help set autoscaling/cost alarms.
 - Define the exact AgentCore-session-to-DynamoDB handoff mechanism (hybrid session/memory) — needs a short implementation spike.
 - Define the dev/staging/prod GitHub Actions promotion flow (auto-deploy vs. manual approval gate before prod).

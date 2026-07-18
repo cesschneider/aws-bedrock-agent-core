@@ -9,7 +9,8 @@
     "watch": "tsc -w",
     "test": "jest",
     "lint": "eslint .",
-    "cdk": "cdk"
+    "cdk": "cdk",
+    "cdk:bootstrap-oidc": "cdk --app 'npx ts-node --prefer-ts-exts bin/bootstrap.ts'"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.145",

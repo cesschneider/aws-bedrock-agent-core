@@ -28,8 +28,12 @@ export class UploadPipeline extends Construct {
   constructor(scope: Construct, id: string, props: UploadPipelineProps) {
     super(scope, id);
 
+    // S3 bucket names are globally unique across ALL AWS accounts, not just
+    // this one — appending the account ID avoids a collision with another
+    // AWS customer's bucket (matters more now that each environment is its
+    // own account, but the risk exists regardless of account topology).
     this.bucket = new s3.Bucket(this, "RawDocumentsBucket", {
-      bucketName: `raw-documents-${props.envName}`,
+      bucketName: `raw-documents-${props.envName}-${cdk.Stack.of(this).account}`,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
       enforceSSL: true,
