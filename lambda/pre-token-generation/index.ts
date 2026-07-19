@@ -19,6 +19,32 @@ export function mapWorkspaceGroupsToDepartments(workspaceGroupEmails: string[]):
   return Array.from(new Set([...departments, COMPANY_WIDE]));
 }
 
+/**
+ * Native (non-Google-federated) Cognito users have no Google Workspace
+ * identity, so the Google Admin SDK fetcher cannot resolve their groups —
+ * and until the Workspace service account is configured (see
+ * docs/deployment-setup.md) that fetcher fails at runtime. For these users
+ * (used by the dev CLI's USER_PASSWORD_AUTH login), department membership
+ * comes from their native Cognito Group memberships instead, which Cognito
+ * passes in via `groupConfiguration.groupsToOverride`. We pass those through
+ * unchanged (plus the reserved company-wide department).
+ */
+export function nativeDepartments(event: PreTokenGenerationV2TriggerEvent): string[] {
+  const nativeGroups = event.request.groupConfiguration?.groupsToOverride ?? [];
+  return Array.from(new Set([...nativeGroups, COMPANY_WIDE]));
+}
+
+/**
+ * A user is Google-federated when Cognito records an `identities` attribute
+ * referencing the Google provider. Native (admin-created) users have no such
+ * attribute. The value is a JSON array string, e.g.
+ * `[{"providerName":"Google","providerType":"Google","issuer":"..."}]`.
+ */
+export function isGoogleFederatedUser(event: PreTokenGenerationV2TriggerEvent): boolean {
+  const identities = event.request.userAttributes.identities;
+  return typeof identities === "string" && identities.includes("Google");
+}
+
 export async function buildGroupOverride(
   event: PreTokenGenerationV2TriggerEvent,
   groupsFetcher: GroupsFetcher
@@ -28,8 +54,12 @@ export async function buildGroupOverride(
     throw new Error("Pre-token-generation event is missing the user's email attribute");
   }
 
-  const workspaceGroups = await groupsFetcher.fetchGroupsForUser(email);
-  const departments = mapWorkspaceGroupsToDepartments(workspaceGroups);
+  // Native users: skip the Google Admin SDK (which has no identity to look up
+  // and fails at runtime until the Workspace service account is configured).
+  // Use their native Cognito groups as the department claim instead.
+  const departments = isGoogleFederatedUser(event)
+    ? mapWorkspaceGroupsToDepartments(await groupsFetcher.fetchGroupsForUser(email))
+    : nativeDepartments(event);
 
   event.response = {
     claimsAndScopeOverrideDetails: {

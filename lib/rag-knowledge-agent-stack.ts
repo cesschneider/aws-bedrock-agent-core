@@ -20,6 +20,13 @@ export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
    * Useful in tests where SSM context resolution isn't available.
    */
   googleClientSecretOverride?: string;
+  /**
+   * Optional pre-resolved temporary password for the native dev test user
+   * (non-prd only). If omitted, resolved via ssm.StringParameter.valueFromLookup
+   * of `/rag-knowledge-agent/<env>/dev-test-user-password`. Useful in tests /
+   * CI synth where SSM context resolution isn't available.
+   */
+  devTestUserPasswordOverride?: string;
 }
 
 /**
@@ -95,12 +102,22 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
         `/rag-knowledge-agent/${this.envName}/google-client-secret`
       );
 
+    // Dev test user password (non-prd only) — resolved at synth time the same
+    // way as the Google client secret, since CfnUserPoolUser.temporaryPassword
+    // is a plaintext template value (no CFN dynamic reference support).
+    const devTestUserPassword = props.devTestUserPasswordOverride ??
+      ssm.StringParameter.valueFromLookup(
+        this,
+        `/rag-knowledge-agent/${this.envName}/dev-test-user-password`
+      );
+
     this.identity = new Identity(this, "Identity", {
       envName: this.envName,
       googleClientId: "PENDING-GOOGLE-OAUTH-CLIENT-ID",
       googleClientSecret,
       googleServiceAccountKeyParam: `/rag-knowledge-agent/${this.envName}/google-service-account-key`,
       googleWorkspaceAdminEmail: `admin@${this.envName}.pending-setup.invalid`,
+      devTestUserPassword,
     });
 
     this.chatHandler = new ChatHandler(this, "ChatHandler", {
@@ -118,6 +135,24 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
       uploadHandler: this.uploadPipeline.uploadHandler,
       userPool: this.identity.userPool,
       userPoolClient: this.identity.userPoolClient,
+    });
+
+    // Surface the values the chat CLI and the upload guide need, so they can
+    // be discovered from `aws cloudformation describe-stacks` without hunting
+    // through resources.
+    new cdk.CfnOutput(this, "ChatHandlerFunctionUrl", {
+      value: this.chatHandler.fnUrl.url,
+      description: "Lambda Function URL for the chat endpoint (POST, JWT bearer auth).",
+    });
+    new cdk.CfnOutput(this, "CognitoUserPoolId", {
+      value: this.identity.userPool.userPoolId,
+    });
+    new cdk.CfnOutput(this, "CognitoClientId", {
+      value: this.identity.userPoolClient.userPoolClientId,
+    });
+    new cdk.CfnOutput(this, "RawDocumentsBucket", {
+      value: this.uploadPipeline.bucket.bucketName,
+      description: "S3 bucket for source documents; uploading triggers KB ingestion.",
     });
   }
 }

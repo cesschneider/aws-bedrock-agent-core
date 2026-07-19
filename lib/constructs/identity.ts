@@ -22,6 +22,17 @@ export interface IdentityProps {
   googleServiceAccountKeyParam: string;
   /** Email of a Google Workspace super admin the service account impersonates. */
   googleWorkspaceAdminEmail: string;
+  /**
+   * Optional temporary password for a native (non-Google) dev test user,
+   * resolved at synthesis time via ssm.StringParameter.valueFromLookup
+   * (SecureString — see docs/deployment-setup.md). When provided in a non-prd
+   * environment, a Cognito user `dev-tester@example.invalid` is created in the
+   * `dept-engineering` group so the chat CLI can log in via USER_PASSWORD_AUTH
+   * without Google Workspace federation. Never created in prd. The pre-token
+   * generation trigger's native-user branch passes the Cognito group through
+   * as the department claim.
+   */
+  devTestUserPassword?: string;
 }
 
 function retentionFor(envName: string): logs.RetentionDays {
@@ -107,12 +118,62 @@ export class Identity extends Construct {
 
     this.userPoolClient = this.userPool.addClient("WebClient", {
       generateSecret: false, // public client (web SPA) — no client secret to leak
+      // USER_PASSWORD_AUTH lets the dev CLI log in as a native Cognito user
+      // (dev-tester) without going through Google Workspace federation. The
+      // authorizationCodeGrant flow remains for the production Google path.
+      authFlows: { userPassword: true, custom: false, userSrp: false, adminUserPassword: false },
       oAuth: {
         flows: { authorizationCodeGrant: true },
         scopes: [cognito.OAuthScope.EMAIL, cognito.OAuthScope.OPENID, cognito.OAuthScope.PROFILE],
       },
-      supportedIdentityProviders: [cognito.UserPoolClientIdentityProvider.GOOGLE],
+      supportedIdentityProviders: [
+        cognito.UserPoolClientIdentityProvider.GOOGLE,
+        cognito.UserPoolClientIdentityProvider.COGNITO,
+      ],
     });
     this.userPoolClient.node.addDependency(googleIdp);
+
+    // Dev test user (non-prd only) — lets the chat CLI exercise the agent
+    // without Google Workspace federation. Department scoping comes from the
+    // native Cognito group, which the pre-token generation trigger passes
+    // through for non-Google users. The temporary password is resolved from
+    // SSM at synthesis time (same pattern as the Google client secret).
+    //
+    // The user is created via a raw CfnResource because this CDK version's
+    // CfnUserPoolUser L1 does not model `TemporaryPassword` (and there is no
+    // Group L2) — the underlying CloudFormation resource supports both. Same
+    // escape hatch used for S3 Vectors in lib/constructs/vector-index.ts.
+    if (props.envName !== "prd" && props.devTestUserPassword) {
+      const devDepartment = "dept-engineering";
+      const devUsername = "dev-tester@example.invalid";
+
+      const devGroup = new cognito.CfnUserPoolGroup(this, "DevTestGroup", {
+        userPoolId: this.userPool.userPoolId,
+        groupName: devDepartment,
+        description: "Native Cognito group for the dev test user (dept stand-in)",
+      });
+
+      const devUser = new cdk.CfnResource(this, "DevTestUser", {
+        type: "AWS::Cognito::UserPoolUser",
+        properties: {
+          UserPoolId: this.userPool.userPoolId,
+          Username: devUsername,
+          TemporaryPassword: props.devTestUserPassword,
+          MessageAction: "SUPPRESS", // no welcome email for the dev test user
+          DesiredDeliveryMediums: [],
+          UserAttributes: [
+            { Name: "email", Value: devUsername },
+            { Name: "email_verified", Value: "true" },
+          ],
+        },
+      });
+      devUser.node.addDependency(devGroup);
+
+      new cognito.CfnUserPoolUserToGroupAttachment(this, "DevTestUserGroupAttachment", {
+        userPoolId: this.userPool.userPoolId,
+        username: devUsername,
+        userPoolGroupName: devDepartment,
+      }).node.addDependency(devUser, devGroup);
+    }
   }
 }

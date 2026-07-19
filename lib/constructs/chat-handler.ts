@@ -82,12 +82,14 @@ export class ChatHandler extends Construct {
     // Generate presigned S3 URLs for citation downloads.
     props.documentsBucket.grantRead(this.fn);
 
-    // Lambda Function URL with streaming response — no API Gateway needed
-    // (spec 4.4). Auth is handled in application code (JWT validation), not
-    // at the gateway layer (AWS_NONE).
+    // Lambda Function URL — no API Gateway needed (spec 4.4). Auth is
+    // handled in application code (JWT validation), not at the gateway layer
+    // (AWS_NONE). BUFFERED invoke mode returns the handler's full JSON
+    // response in one piece; switch to RESPONSE_STREAM + awslambda.
+    // streamifyResponse only if token-by-token streaming is implemented.
     this.fnUrl = this.fn.addFunctionUrl({
       authType: lambda.FunctionUrlAuthType.NONE,
-      invokeMode: lambda.InvokeMode.RESPONSE_STREAM,
+      invokeMode: lambda.InvokeMode.BUFFERED,
       cors: {
         allowedOrigins: ["*"], // tighten once frontend URL is known
         allowedMethods: [lambda.HttpMethod.POST],

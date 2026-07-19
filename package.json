@@ -10,7 +10,8 @@
     "test": "jest",
     "lint": "eslint .",
     "cdk": "cdk",
-    "cdk:bootstrap-oidc": "cdk --app 'npx ts-node --prefer-ts-exts bin/bootstrap.ts'"
+    "cdk:bootstrap-oidc": "cdk --app 'npx ts-node --prefer-ts-exts bin/bootstrap.ts'",
+    "chat": "node --experimental-strip-types cli/chat.ts"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.145",

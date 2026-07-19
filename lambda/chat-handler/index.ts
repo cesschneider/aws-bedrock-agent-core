@@ -11,19 +11,13 @@ import { appendTurn } from "../common/conversation-store";
 import { randomUUID } from "crypto";
 
 /**
- * Lambda Function URL handler for the RAG chat endpoint
- * (spec Section 4.4). RESPONSE_STREAM invoke mode does NOT support
- * Lambda's built-in streaming helper — streaming happens through the
- * Function URL's native chunked transfer encoding, NOT the Lambda
- * Runtime API's awslambda.streamifyResponse.
+ * Lambda Function URL handler for the RAG chat endpoint (spec Section 4.4).
  *
- * Instead, this handler writes a JSON response and relies on the caller
- * to read the Bedrock stream. In production, the frontend connects
- * directly to the Function URL's WebSocket-equivalent stream.
- *
- * When RESPONSE_STREAM is NOT available (early dev / testing), this
- * handler falls back to a standard JSON response with the full answer
- * so integration tests can validate end-to-end behavior.
+ * The Function URL uses BUFFERED invoke mode, so this handler returns a
+ * single JSON response with the full answer and citations. To stream
+ * tokens to the client instead, switch the Function URL to
+ * RESPONSE_STREAM and wrap this handler with awslambda.streamifyResponse,
+ * writing answer chunks to the stream as they arrive from Bedrock.
  */
 
 const dynamo = new DynamoDBClient({});

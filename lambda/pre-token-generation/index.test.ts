@@ -1,6 +1,12 @@
 import type { PreTokenGenerationV2TriggerEvent } from "aws-lambda";
 import { COMPANY_WIDE } from "../common/auth";
-import { buildGroupOverride, GroupsFetcher, mapWorkspaceGroupsToDepartments } from "./index";
+import {
+  buildGroupOverride,
+  GroupsFetcher,
+  isGoogleFederatedUser,
+  mapWorkspaceGroupsToDepartments,
+  nativeDepartments,
+} from "./index";
 
 describe("mapWorkspaceGroupsToDepartments", () => {
   it("strips the domain from Workspace group emails to get department names", () => {
@@ -27,24 +33,55 @@ describe("mapWorkspaceGroupsToDepartments", () => {
   });
 });
 
-function makeEvent(email: string | undefined): PreTokenGenerationV2TriggerEvent {
+function makeEvent(
+  email: string | undefined,
+  opts: { identities?: string; nativeGroups?: string[] } = {}
+): PreTokenGenerationV2TriggerEvent {
   return {
     version: "2",
     triggerSource: "TokenGeneration_HostedAuth",
     request: {
-      userAttributes: email ? { email } : {},
-      groupConfiguration: { groupsToOverride: [], iamRolesToOverride: [], preferredRole: undefined },
+      userAttributes: email
+        ? { email, ...(opts.identities ? { identities: opts.identities } : {}) }
+        : {},
+      groupConfiguration: {
+        groupsToOverride: opts.nativeGroups ?? [],
+        iamRolesToOverride: [],
+        preferredRole: undefined,
+      },
     },
     response: {},
   } as unknown as PreTokenGenerationV2TriggerEvent;
 }
 
+const GOOGLE_IDENTITIES =
+  '[{"userId":"12345","providerName":"Google","providerType":"Google","issuer":"https://accounts.google.com"}]';
+
+describe("isGoogleFederatedUser / nativeDepartments", () => {
+  it("recognizes a Google-federated user by the identities attribute", () => {
+    expect(isGoogleFederatedUser(makeEvent("a@company.com", { identities: GOOGLE_IDENTITIES }))).toBe(true);
+  });
+
+  it("treats a user without identities as native (non-Google)", () => {
+    expect(isGoogleFederatedUser(makeEvent("a@company.com"))).toBe(false);
+  });
+
+  it("passes native Cognito groups through plus company-wide for native users", () => {
+    const event = makeEvent("dev@company.com", { nativeGroups: ["dept-engineering"] });
+    expect(nativeDepartments(event)).toEqual(expect.arrayContaining(["dept-engineering", COMPANY_WIDE]));
+  });
+
+  it("grants only company-wide to a native user with no group memberships", () => {
+    expect(nativeDepartments(makeEvent("dev@company.com"))).toEqual([COMPANY_WIDE]);
+  });
+});
+
 describe("buildGroupOverride", () => {
-  it("sets groupsToOverride on both id and access token generation", async () => {
+  it("sets groupsToOverride from Google Workspace groups for federated users", async () => {
     const fetcher: GroupsFetcher = {
       fetchGroupsForUser: jest.fn().mockResolvedValue(["dept-engineering@company.com"]),
     };
-    const event = makeEvent("alice@company.com");
+    const event = makeEvent("alice@company.com", { identities: GOOGLE_IDENTITIES });
 
     const result = await buildGroupOverride(event, fetcher);
 
@@ -55,6 +92,19 @@ describe("buildGroupOverride", () => {
     expect(fetcher.fetchGroupsForUser).toHaveBeenCalledWith("alice@company.com");
   });
 
+  it("uses native Cognito groups and skips the Google fetcher for native users", async () => {
+    const fetcher: GroupsFetcher = { fetchGroupsForUser: jest.fn() };
+    const event = makeEvent("dev@company.com", { nativeGroups: ["dept-engineering"] });
+
+    const result = await buildGroupOverride(event, fetcher);
+
+    const override = result.response.claimsAndScopeOverrideDetails;
+    expect(override?.groupOverrideDetails?.groupsToOverride).toEqual(
+      expect.arrayContaining(["dept-engineering", COMPANY_WIDE])
+    );
+    expect(fetcher.fetchGroupsForUser).not.toHaveBeenCalled();
+  });
+
   it("throws when the event has no email attribute", async () => {
     const fetcher: GroupsFetcher = { fetchGroupsForUser: jest.fn() };
     const event = makeEvent(undefined);
@@ -63,11 +113,11 @@ describe("buildGroupOverride", () => {
     expect(fetcher.fetchGroupsForUser).not.toHaveBeenCalled();
   });
 
-  it("propagates fetcher errors rather than silently granting no access", async () => {
+  it("propagates fetcher errors for Google-federated users rather than silently granting no access", async () => {
     const fetcher: GroupsFetcher = {
       fetchGroupsForUser: jest.fn().mockRejectedValue(new Error("Google Admin API unavailable")),
     };
-    const event = makeEvent("alice@company.com");
+    const event = makeEvent("alice@company.com", { identities: GOOGLE_IDENTITIES });
 
     await expect(buildGroupOverride(event, fetcher)).rejects.toThrow("Google Admin API unavailable");
   });

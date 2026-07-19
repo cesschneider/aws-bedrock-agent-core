@@ -23,5 +23,8 @@ new RagKnowledgeAgentStack(app, `RagKnowledgeAgent-${envName}`, {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     region: process.env.CDK_DEFAULT_REGION ?? "us-east-1",
   },
-  ...(!hasAwsContext && { googleClientSecretOverride: "ci-synth-placeholder" }),
+  ...(!hasAwsContext && {
+    googleClientSecretOverride: "ci-synth-placeholder",
+    devTestUserPasswordOverride: "ci-synth-placeholder",
+  }),
 });
