@@ -5,6 +5,10 @@ import { UploadPipeline } from "./constructs/upload-pipeline";
 import { KbSync } from "./constructs/kb-sync";
 import { ConversationHistory } from "./constructs/conversation-history";
 import { Identity } from "./constructs/identity";
+import { ChatHandler } from "./constructs/chat-handler";
+import { KnowledgeBase } from "./constructs/knowledge-base";
+import { RagAgent } from "./constructs/agent";
+import { UploadApi } from "./constructs/upload-api";
 
 export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
   /** Deployment environment slug: dev | stg | prd */
@@ -15,6 +19,14 @@ export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
    * Useful in tests where SSM context resolution isn't available.
    */
   googleClientSecretOverride?: string;
+  /**
+   * ARN of the S3 Vectors index backing the Bedrock Knowledge Base. S3
+   * Vectors has no CDK support yet, so the index is provisioned outside this
+   * stack (Phase 0 spike outcome) and passed in. When omitted, the
+   * KnowledgeBase construct is skipped and kb-sync keeps its placeholder IDs
+   * — this keeps synth/deploy working until the index exists per env.
+   */
+  vectorIndexArn?: string;
 }
 
 /**
@@ -30,6 +42,10 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
   public readonly kbSync: KbSync;
   public readonly conversationHistory: ConversationHistory;
   public readonly identity: Identity;
+  public readonly chatHandler: ChatHandler;
+  public readonly knowledgeBase?: KnowledgeBase;
+  public readonly ragAgent?: RagAgent;
+  public readonly uploadApi: UploadApi;
 
   constructor(scope: Construct, id: string, props: RagKnowledgeAgentStackProps) {
     super(scope, id, props);
@@ -42,13 +58,33 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
       envName: this.envName,
     });
 
+    // The Knowledge Base needs an S3 Vectors index ARN, provisioned outside
+    // CDK per environment (Phase 0 spike outcome). Until it's supplied via
+    // props/context, kb-sync runs with placeholder IDs and the KB construct
+    // is skipped so synth/deploy stay green.
+    const vectorIndexArn =
+      props.vectorIndexArn ?? this.node.tryGetContext("vectorIndexArn");
+    if (vectorIndexArn) {
+      this.knowledgeBase = new KnowledgeBase(this, "KnowledgeBase", {
+        envName: this.envName,
+        sourceBucket: this.uploadPipeline.bucket,
+        vectorIndexArn,
+      });
+
+      this.ragAgent = new RagAgent(this, "RagAgent", {
+        envName: this.envName,
+        knowledgeBaseId: this.knowledgeBase.knowledgeBase.attrKnowledgeBaseId,
+        knowledgeBaseArn: this.knowledgeBase.knowledgeBase.attrKnowledgeBaseArn,
+      });
+    }
+
     this.kbSync = new KbSync(this, "KbSync", {
       envName: this.envName,
       sourceBucket: this.uploadPipeline.bucket,
-      // Placeholders until the Bedrock Knowledge Base construct (task #5,
-      // blocked on the Phase 0 S3 Vectors spike) supplies the real IDs.
-      knowledgeBaseId: "PENDING-KB-CONSTRUCT",
-      dataSourceId: "PENDING-DATA-SOURCE-CONSTRUCT",
+      knowledgeBaseId:
+        this.knowledgeBase?.knowledgeBase.attrKnowledgeBaseId ?? "PENDING-KB-CONSTRUCT",
+      dataSourceId:
+        this.knowledgeBase?.dataSource.attrDataSourceId ?? "PENDING-DATA-SOURCE-CONSTRUCT",
     });
 
     this.conversationHistory = new ConversationHistory(this, "ConversationHistory", {
@@ -73,6 +109,23 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
       googleClientSecret,
       googleServiceAccountKeyParam: `/rag-knowledge-agent/${this.envName}/google-service-account-key`,
       googleWorkspaceAdminEmail: `admin@${this.envName}.pending-setup.invalid`,
+    });
+
+    this.chatHandler = new ChatHandler(this, "ChatHandler", {
+      envName: this.envName,
+      conversationTable: this.conversationHistory.table,
+      documentsBucket: this.uploadPipeline.bucket,
+      cognitoUserPoolId: this.identity.userPool.userPoolId,
+      cognitoClientId: this.identity.userPoolClient.userPoolClientId,
+      agentId: this.ragAgent?.agent.attrAgentId,
+      agentAliasId: this.ragAgent?.agentAlias.attrAgentAliasId,
+    });
+
+    this.uploadApi = new UploadApi(this, "UploadApi", {
+      envName: this.envName,
+      uploadHandler: this.uploadPipeline.uploadHandler,
+      userPool: this.identity.userPool,
+      userPoolClient: this.identity.userPoolClient,
     });
   }
 }
