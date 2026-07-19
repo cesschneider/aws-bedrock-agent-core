@@ -208,7 +208,12 @@ export class Identity extends Construct {
             `DevTestUserPassword-${this.userPool.userPoolId}-${devUsername}`
           ),
         },
-        policy: cr.AwsCustomResourcePolicy.fromSdkCalls(),
+        policy: cr.AwsCustomResourcePolicy.fromStatements([
+          new iam.PolicyStatement({
+            actions: ["cognito-idp:AdminSetUserPassword"],
+            resources: [this.userPool.userPoolArn],
+          }),
+        ]),
       });
       setPassword.node.addDependency(devUser);
     }
