@@ -75,7 +75,7 @@ export async function handler(
       createdAt: new Date().toISOString(),
     });
 
-    // 4. Invoke Bedrock AgentCore with department-scoped metadata filter
+    // 4. Invoke the Bedrock Agent with a department-scoped metadata filter
     const citations: CitationLink[] = [];
     const answerParts: string[] = [];
     let hasChunks = false;

@@ -32,7 +32,7 @@ export interface ChatHandlerProps {
  * Lambda Function URL chat-handler (spec Section 4.4).
  *
  * Entry point for the RAG Q&A flow: validates the user's Cognito JWT,
- * extracts department claims, invokes Bedrock AgentCore with a department-
+ * extracts department claims, invokes the Bedrock Agent with a department-
  * scoped metadata filter, streams the grounded answer with citations back,
  * and persists each turn to DynamoDB.
  *
@@ -68,7 +68,7 @@ export class ChatHandler extends Construct {
       logGroup,
     });
 
-    // Invoke Bedrock AgentCore agent at runtime.
+    // Invoke the Bedrock Agent at runtime.
     this.fn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ["bedrock:InvokeAgent"],

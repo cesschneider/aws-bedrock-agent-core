@@ -7,7 +7,7 @@ import {
 
 /**
  * Persistent, cross-session conversation history (spec Section 4.4,
- * "Session/memory (hybrid)"). AgentCore's native session/memory holds
+ * "Session/memory (hybrid)"). The Bedrock Agent's native sessionId holds
  * short-term in-session state separately; this store is the durable
  * long-term record keyed by user ID.
  *

@@ -5,7 +5,7 @@ import {
 } from "@aws-sdk/client-bedrock-agent-runtime";
 
 /**
- * Invokes the Bedrock AgentCore agent with department-scoped metadata
+ * Invokes the Bedrock Agent with department-scoped metadata
  * filtering (spec Section 4.4). The agent performs retrieve-and-generate
  * against the Knowledge Base, filtering chunks to the user's departments
  * plus the reserved "company-wide" department.
@@ -71,7 +71,7 @@ export async function* invokeAgent(input: AgentInvokeInput): AsyncGenerator<Agen
   const command = new InvokeAgentCommand(commandInput);
   const response = await client.send(command);
 
-  // Bedrock AgentCore streams the response — iterate over completion events.
+  // The Bedrock Agent streams the response — iterate over completion events.
   if (response.completion) {
     for await (const event of response.completion) {
       if (event.chunk?.bytes) {
