@@ -22,6 +22,10 @@ export interface ChatHandlerProps {
   cognitoUserPoolId: string;
   /** Cognito client ID for JWT audience validation. */
   cognitoClientId: string;
+  /** Bedrock agent ID; placeholder until the RagAgent construct is active. */
+  agentId?: string;
+  /** Bedrock agent alias ID; placeholder until the RagAgent construct is active. */
+  agentAliasId?: string;
 }
 
 /**
@@ -56,8 +60,8 @@ export class ChatHandler extends Construct {
         DOCUMENTS_BUCKET_NAME: props.documentsBucket.bucketName,
         COGNITO_USER_POOL_ID: props.cognitoUserPoolId,
         COGNITO_CLIENT_ID: props.cognitoClientId,
-        AGENT_ID: "PENDING-AGENT-ID",
-        AGENT_ALIAS_ID: "PENDING-AGENT-ALIAS-ID",
+        AGENT_ID: props.agentId ?? "PENDING-AGENT-ID",
+        AGENT_ALIAS_ID: props.agentAliasId ?? "PENDING-AGENT-ALIAS-ID",
       },
       timeout: cdk.Duration.seconds(30),
       memorySize: 512,

@@ -7,6 +7,7 @@ import { ConversationHistory } from "./constructs/conversation-history";
 import { Identity } from "./constructs/identity";
 import { ChatHandler } from "./constructs/chat-handler";
 import { KnowledgeBase } from "./constructs/knowledge-base";
+import { RagAgent } from "./constructs/agent";
 
 export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
   /** Deployment environment slug: dev | stg | prd */
@@ -42,6 +43,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
   public readonly identity: Identity;
   public readonly chatHandler: ChatHandler;
   public readonly knowledgeBase?: KnowledgeBase;
+  public readonly ragAgent?: RagAgent;
 
   constructor(scope: Construct, id: string, props: RagKnowledgeAgentStackProps) {
     super(scope, id, props);
@@ -65,6 +67,12 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
         envName: this.envName,
         sourceBucket: this.uploadPipeline.bucket,
         vectorIndexArn,
+      });
+
+      this.ragAgent = new RagAgent(this, "RagAgent", {
+        envName: this.envName,
+        knowledgeBaseId: this.knowledgeBase.knowledgeBase.attrKnowledgeBaseId,
+        knowledgeBaseArn: this.knowledgeBase.knowledgeBase.attrKnowledgeBaseArn,
       });
     }
 
@@ -107,6 +115,8 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
       documentsBucket: this.uploadPipeline.bucket,
       cognitoUserPoolId: this.identity.userPool.userPoolId,
       cognitoClientId: this.identity.userPoolClient.userPoolClientId,
+      agentId: this.ragAgent?.agent.attrAgentId,
+      agentAliasId: this.ragAgent?.agentAlias.attrAgentAliasId,
     });
   }
 }
