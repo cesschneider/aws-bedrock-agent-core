@@ -16,7 +16,7 @@ import * as crypto from "crypto";
 let issuer = "";
 let audience = "";
 let jwksUri = "";
-let jwksCache: { keys: JsonWebKey[] } | null = null;
+let jwksCache: { keys: crypto.JsonWebKey[] } | null = null;
 let jwksCacheTs = 0;
 const JWKS_TTL_MS = 60_000; // 1 minute TTL on JWKS cache
 
@@ -50,41 +50,30 @@ function base64UrlToBytes(input: string): Uint8Array {
   return Uint8Array.from(Buffer.from(base64, "base64"));
 }
 
-async function fetchJwks(): Promise<{ keys: JsonWebKey[] }> {
+async function fetchJwks(): Promise<{ keys: crypto.JsonWebKey[] }> {
   if (jwksCache && Date.now() - jwksCacheTs < JWKS_TTL_MS) {
     return jwksCache;
   }
   const resp = await fetch(jwksUri);
   if (!resp.ok) throw new Error(`JWKS fetch failed: ${resp.status}`);
-  jwksCache = (await resp.json()) as { keys: JsonWebKey[] };
+  jwksCache = (await resp.json()) as { keys: crypto.JsonWebKey[] };
   jwksCacheTs = Date.now();
   return jwksCache;
 }
 
-async function verifySignature(
-  header: any,
-  payload: string,
+function verifySignature(
+  signInput: string,
   signature: Uint8Array,
-  publicKey: JsonWebKey
-): Promise<boolean> {
-  const key = crypto.createPublicKey({
-    key: publicKey,
-    format: "jwk",
-    type: "spki",
-  });
-  const signInput = `${toBase64Url(header)}.${toBase64Url(payload)}`;
-  const verify = crypto.createVerify("RSA-SHA256");
-  verify.update(signInput);
-
+  publicKey: crypto.JsonWebKey
+): boolean {
   try {
-    return verify.verify(key, signature);
+    const key = crypto.createPublicKey({ key: publicKey, format: "jwk" });
+    const verify = crypto.createVerify("RSA-SHA256");
+    verify.update(signInput);
+    return verify.verify(key, Buffer.from(signature));
   } catch {
     return false;
   }
-}
-
-function toBase64Url(input: string): string {
-  return Buffer.from(input).toString("base64url");
 }
 
 export async function authenticate(authHeader: string | undefined): Promise<AuthResult> {
@@ -135,12 +124,8 @@ export async function authenticate(authHeader: string | undefined): Promise<Auth
     });
   }
 
-  const sigValid = await verifySignature(
-    header,
-    rawPayload,
-    base64UrlToBytes(token.split(".")[2]),
-    key
-  );
+  const [headerB64, payloadB64, sigB64] = token.split(".");
+  const sigValid = verifySignature(`${headerB64}.${payloadB64}`, base64UrlToBytes(sigB64), key);
   if (!sigValid) {
     throw Object.assign(new Error("Invalid token signature"), { statusCode: 401 });
   }
