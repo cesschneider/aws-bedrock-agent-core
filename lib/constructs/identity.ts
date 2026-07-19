@@ -172,7 +172,7 @@ export class Identity extends Construct {
       new cognito.CfnUserPoolUserToGroupAttachment(this, "DevTestUserGroupAttachment", {
         userPoolId: this.userPool.userPoolId,
         username: devUsername,
-        userPoolGroupName: devDepartment,
+        groupName: devDepartment,
       }).node.addDependency(devUser, devGroup);
     }
   }
