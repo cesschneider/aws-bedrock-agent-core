@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main, development, staging]
   push:
-    branches: [main, development, staging]
+    branches: ['**']
 
 jobs:
   build-lint-test:
