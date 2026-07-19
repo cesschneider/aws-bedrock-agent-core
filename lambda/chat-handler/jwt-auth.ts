@@ -36,11 +36,13 @@ function base64UrlDecode(input: string): string {
   return Buffer.from(base64, "base64").toString("utf-8");
 }
 
-function decodeJwt(token: string): { header: any; payload: any; signature: Uint8Array } {
+type JwtClaims = Record<string, unknown>;
+
+function decodeJwt(token: string): { header: JwtClaims; payload: string; signature: Uint8Array } {
   const [headerB64, payloadB64, sigB64] = token.split(".");
   return {
-    header: JSON.parse(base64UrlDecode(headerB64)),
-    payload: JSON.parse(base64UrlDecode(payloadB64)),
+    header: JSON.parse(base64UrlDecode(headerB64)) as JwtClaims,
+    payload: base64UrlDecode(payloadB64),
     signature: base64UrlToBytes(sigB64),
   };
 }

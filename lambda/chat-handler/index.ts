@@ -138,14 +138,14 @@ export async function handler(
         turnId,
       }),
     };
-  } catch (err: any) {
+  } catch (err) {
     console.error("Chat handler error:", err);
-    const statusCode = err.statusCode ?? 500;
+    const e = err as { statusCode?: number; message?: string };
     return {
-      statusCode,
+      statusCode: e.statusCode ?? 500,
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        error: err.message ?? "Internal server error",
+        error: e.message ?? "Internal server error",
       }),
     };
   }

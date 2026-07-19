@@ -36,7 +36,12 @@ export interface Citation {
   contentType?: string;
 }
 
-function resolveS3Uri(retrievedReference: any): string | undefined {
+interface RetrievedReferenceLike {
+  s3Location?: { uri?: string };
+  location?: { s3Location?: { uri?: string } };
+}
+
+function resolveS3Uri(retrievedReference: RetrievedReferenceLike): string | undefined {
   // S3 location from Bedrock KB retrieval — the exact shape depends on the
   // vector store backend (S3 Vectors vs. OpenSearch). Normalize here.
   const loc = retrievedReference?.s3Location ?? retrievedReference?.location?.s3Location;
