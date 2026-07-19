@@ -8,6 +8,7 @@ import { Identity } from "./constructs/identity";
 import { ChatHandler } from "./constructs/chat-handler";
 import { KnowledgeBase } from "./constructs/knowledge-base";
 import { RagAgent } from "./constructs/agent";
+import { UploadApi } from "./constructs/upload-api";
 
 export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
   /** Deployment environment slug: dev | stg | prd */
@@ -44,6 +45,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
   public readonly chatHandler: ChatHandler;
   public readonly knowledgeBase?: KnowledgeBase;
   public readonly ragAgent?: RagAgent;
+  public readonly uploadApi: UploadApi;
 
   constructor(scope: Construct, id: string, props: RagKnowledgeAgentStackProps) {
     super(scope, id, props);
@@ -117,6 +119,13 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
       cognitoClientId: this.identity.userPoolClient.userPoolClientId,
       agentId: this.ragAgent?.agent.attrAgentId,
       agentAliasId: this.ragAgent?.agentAlias.attrAgentAliasId,
+    });
+
+    this.uploadApi = new UploadApi(this, "UploadApi", {
+      envName: this.envName,
+      uploadHandler: this.uploadPipeline.uploadHandler,
+      userPool: this.identity.userPool,
+      userPoolClient: this.identity.userPoolClient,
     });
   }
 }
