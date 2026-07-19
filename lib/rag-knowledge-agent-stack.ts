@@ -5,6 +5,7 @@ import { UploadPipeline } from "./constructs/upload-pipeline";
 import { KbSync } from "./constructs/kb-sync";
 import { ConversationHistory } from "./constructs/conversation-history";
 import { Identity } from "./constructs/identity";
+import { ChatHandler } from "./constructs/chat-handler";
 
 export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
   /** Deployment environment slug: dev | stg | prd */
@@ -30,6 +31,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
   public readonly kbSync: KbSync;
   public readonly conversationHistory: ConversationHistory;
   public readonly identity: Identity;
+  public readonly chatHandler: ChatHandler;
 
   constructor(scope: Construct, id: string, props: RagKnowledgeAgentStackProps) {
     super(scope, id, props);
@@ -73,6 +75,14 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
       googleClientSecret,
       googleServiceAccountKeyParam: `/rag-knowledge-agent/${this.envName}/google-service-account-key`,
       googleWorkspaceAdminEmail: `admin@${this.envName}.pending-setup.invalid`,
+    });
+
+    this.chatHandler = new ChatHandler(this, "ChatHandler", {
+      envName: this.envName,
+      conversationTable: this.conversationHistory.table,
+      documentsBucket: this.uploadPipeline.bucket,
+      cognitoUserPoolId: this.identity.userPool.userPoolId,
+      cognitoClientId: this.identity.userPoolClient.userPoolClientId,
     });
   }
 }
