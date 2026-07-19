@@ -136,8 +136,8 @@ export class Identity extends Construct {
     // Dev test user (non-prd only) — lets the chat CLI exercise the agent
     // without Google Workspace federation. Department scoping comes from the
     // native Cognito group, which the pre-token generation trigger passes
-    // through for non-Google users. The temporary password is resolved from
-    // SSM at synthesis time (same pattern as the Google client secret).
+    // through for non-Google users. The temporary password is supplied via a
+    // CDK context value (GitHub Environment secret) — see bin/app.ts.
     //
     // The user is created via a raw CfnResource because this CDK version's
     // CfnUserPoolUser L1 does not model `TemporaryPassword` (and there is no

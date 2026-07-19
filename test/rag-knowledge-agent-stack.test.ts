@@ -8,7 +8,7 @@ describe("RagKnowledgeAgentStack", () => {
     const stack = new RagKnowledgeAgentStack(app, `TestStack-${envName}`, {
       envName,
       googleClientSecretOverride: "test-client-secret",
-      devTestUserPasswordOverride: "test-dev-password",
+      devTestUserPassword: "test-dev-password",
     });
     const template = Template.fromStack(stack);
 

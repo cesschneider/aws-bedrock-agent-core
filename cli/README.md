@@ -23,10 +23,11 @@ npm run chat
 ```
 
 The dev test user is `dev-tester@example.invalid`, created in the
-`dept-engineering` Cognito group (non-prd only). Its temporary password is read
-at deploy time from the SSM SecureString
-`/rag-knowledge-agent/<env>/dev-test-user-password` — put a value there once
-(see `docs/deployment-setup.md`) before deploying.
+`dept-engineering` Cognito group (non-prd only). Its temporary password is
+passed to the stack at deploy time via the `DEV_TEST_USER_PASSWORD` secret in
+the `dev` GitHub Environment (see `.github/workflows/deploy.yml`). Until that
+secret is set, dev deploys skip the dev user (and still succeed); once set, the
+next deploy creates the user. On first login the CLI forces a password change.
 
 ## Usage
 

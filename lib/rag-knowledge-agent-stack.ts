@@ -21,12 +21,12 @@ export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
    */
   googleClientSecretOverride?: string;
   /**
-   * Optional pre-resolved temporary password for the native dev test user
-   * (non-prd only). If omitted, resolved via ssm.StringParameter.valueFromLookup
-   * of `/rag-knowledge-agent/<env>/dev-test-user-password`. Useful in tests /
-   * CI synth where SSM context resolution isn't available.
+   * Optional temporary password for the native dev test user (non-prd only).
+   * Passed via CDK context from a GitHub Environment secret at deploy time
+   * (see bin/app.ts and .github/workflows/deploy.yml). When absent/undefined,
+   * no dev test user is created (deploy still succeeds).
    */
-  devTestUserPasswordOverride?: string;
+  devTestUserPassword?: string;
 }
 
 /**
@@ -102,22 +102,16 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
         `/rag-knowledge-agent/${this.envName}/google-client-secret`
       );
 
-    // Dev test user password (non-prd only) — resolved at synth time the same
-    // way as the Google client secret, since CfnUserPoolUser.temporaryPassword
-    // is a plaintext template value (no CFN dynamic reference support).
-    const devTestUserPassword = props.devTestUserPasswordOverride ??
-      ssm.StringParameter.valueFromLookup(
-        this,
-        `/rag-knowledge-agent/${this.envName}/dev-test-user-password`
-      );
-
+    // Dev test user password (non-prd only) comes from a CDK context value
+    // (GitHub Environment secret) — not an SSM lookup — so a missing secret
+    // skips the dev user instead of failing synthesis.
     this.identity = new Identity(this, "Identity", {
       envName: this.envName,
       googleClientId: "PENDING-GOOGLE-OAUTH-CLIENT-ID",
       googleClientSecret,
       googleServiceAccountKeyParam: `/rag-knowledge-agent/${this.envName}/google-service-account-key`,
       googleWorkspaceAdminEmail: `admin@${this.envName}.pending-setup.invalid`,
-      devTestUserPassword,
+      devTestUserPassword: props.devTestUserPassword,
     });
 
     this.chatHandler = new ChatHandler(this, "ChatHandler", {

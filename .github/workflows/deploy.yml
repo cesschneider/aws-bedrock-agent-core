@@ -32,7 +32,7 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
       - name: cdk deploy (dev)
-        run: npx cdk deploy --require-approval never --context env=dev
+        run: npx cdk deploy --require-approval never --context env=dev --context dev-test-user-password='${{ secrets.DEV_TEST_USER_PASSWORD }}'
         env:
           RAG_ENV: dev
 

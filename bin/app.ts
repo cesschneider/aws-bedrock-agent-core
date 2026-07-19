@@ -17,14 +17,24 @@ if (!validEnvs.includes(envName)) {
 // real SSM lookup happens there.
 const hasAwsContext = Boolean(process.env.CDK_DEFAULT_ACCOUNT);
 
+// Dev test user password (non-prd only) is passed via CDK context from a
+// GitHub Environment secret (DEV_TEST_USER_PASSWORD) at deploy time — see
+// .github/workflows/deploy.yml. Absent/empty ⇒ no dev user is created (the
+// deploy still succeeds). This avoids a synth-time SSM lookup that would
+// hard-fail until the secret exists, which would block all dev deploys.
+const devTestUserPassword = nonEmptyContext(app, "dev-test-user-password");
+
 new RagKnowledgeAgentStack(app, `RagKnowledgeAgent-${envName}`, {
   envName,
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     region: process.env.CDK_DEFAULT_REGION ?? "us-east-1",
   },
-  ...(!hasAwsContext && {
-    googleClientSecretOverride: "ci-synth-placeholder",
-    devTestUserPasswordOverride: "ci-synth-placeholder",
-  }),
+  ...(!hasAwsContext && { googleClientSecretOverride: "ci-synth-placeholder" }),
+  ...(devTestUserPassword && { devTestUserPassword }),
 });
+
+function nonEmptyContext(app: cdk.App, key: string): string | undefined {
+  const v = app.node.tryGetContext(key);
+  return typeof v === "string" && v.trim().length > 0 ? v.trim() : undefined;
+}
