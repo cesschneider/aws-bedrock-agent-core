@@ -5,6 +5,7 @@ import * as lambdaNode from "aws-cdk-lib/aws-lambda-nodejs";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as cr from "aws-cdk-lib/custom-resources";
 import * as path from "path";
 
 export interface IdentityProps {
@@ -136,13 +137,17 @@ export class Identity extends Construct {
     // Dev test user (non-prd only) — lets the chat CLI exercise the agent
     // without Google Workspace federation. Department scoping comes from the
     // native Cognito group, which the pre-token generation trigger passes
-    // through for non-Google users. The temporary password is supplied via a
-    // CDK context value (GitHub Environment secret) — see bin/app.ts.
+    // through for non-Google users. The password is supplied via a CDK context
+    // value (GitHub Environment secret) — see bin/app.ts.
     //
-    // The user is created via a raw CfnResource because this CDK version's
-    // CfnUserPoolUser L1 does not model `TemporaryPassword` (and there is no
-    // Group L2) — the underlying CloudFormation resource supports both. Same
-    // escape hatch used for S3 Vectors in lib/constructs/vector-index.ts.
+    // The user is created via a raw CfnResource (this CDK version's
+    // CfnUserPoolUser L1 doesn't model every property, and there is no Group
+    // L2) — same escape hatch used for S3 Vectors in lib/constructs/vector-index.ts.
+    // The password is NOT set on the CloudFormation resource: AWS removed
+    // `TemporaryPassword` from AWS::Cognito::UserPoolUser (it leaked the
+    // password in the template), so CloudFormation's early validation rejects
+    // it. Instead the permanent password is set via an AdminSetUserPassword SDK
+    // call made by an AwsCustomResource during deploy — IaC-only, no CLI step.
     if (props.envName !== "prd" && props.devTestUserPassword) {
       const devDepartment = "dept-engineering";
       const devUsername = "dev-tester@example.invalid";
@@ -158,7 +163,6 @@ export class Identity extends Construct {
         properties: {
           UserPoolId: this.userPool.userPoolId,
           Username: devUsername,
-          TemporaryPassword: props.devTestUserPassword,
           MessageAction: "SUPPRESS", // no welcome email for the dev test user
           DesiredDeliveryMediums: [],
           UserAttributes: [
@@ -174,6 +178,39 @@ export class Identity extends Construct {
         username: devUsername,
         groupName: devDepartment,
       }).node.addDependency(devUser, devGroup);
+
+      // Set the dev test user's permanent password via an SDK call (see comment
+      // above). Runs on create and whenever the password context value changes.
+      const setPassword = new cr.AwsCustomResource(this, "DevTestUserPassword", {
+        onCreate: {
+          service: "CognitoIdentityServiceProvider",
+          action: "adminSetUserPassword",
+          parameters: {
+            UserPoolId: this.userPool.userPoolId,
+            Username: devUsername,
+            Password: props.devTestUserPassword,
+            Permanent: true,
+          },
+          physicalResourceId: cr.PhysicalResourceId.of(
+            `DevTestUserPassword-${this.userPool.userPoolId}-${devUsername}`
+          ),
+        },
+        onUpdate: {
+          service: "CognitoIdentityServiceProvider",
+          action: "adminSetUserPassword",
+          parameters: {
+            UserPoolId: this.userPool.userPoolId,
+            Username: devUsername,
+            Password: props.devTestUserPassword,
+            Permanent: true,
+          },
+          physicalResourceId: cr.PhysicalResourceId.of(
+            `DevTestUserPassword-${this.userPool.userPoolId}-${devUsername}`
+          ),
+        },
+        policy: cr.AwsCustomResourcePolicy.fromSdkCalls(),
+      });
+      setPassword.node.addDependency(devUser);
     }
   }
 }
