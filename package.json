@@ -33,6 +33,7 @@
     "@aws-sdk/client-s3": "^3.622.0",
     "@aws-sdk/client-ssm": "^3.622.0",
     "@aws-sdk/s3-presigned-post": "^3.622.0",
+    "@aws-sdk/s3-request-presigner": "^3.622.0",
     "aws-cdk-lib": "^2.150.0",
     "constructs": "^10.3.0",
     "googleapis": "^173.0.0"

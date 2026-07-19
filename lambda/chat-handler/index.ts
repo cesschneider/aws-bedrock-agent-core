@@ -1,10 +1,12 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { S3Client } from "@aws-sdk/client-s3";
 import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
 } from "aws-lambda";
 import { authenticate, init as initAuth } from "./jwt-auth";
 import { invokeAgent } from "./agent-invoke";
+import { presignCitation, type CitationLink } from "./citations";
 import { appendTurn } from "../common/conversation-store";
 import { randomUUID } from "crypto";
 
@@ -25,6 +27,7 @@ import { randomUUID } from "crypto";
  */
 
 const dynamo = new DynamoDBClient({});
+const s3 = new S3Client({});
 const tableName = process.env.CONVERSATION_TABLE_NAME ?? "";
 const agentId = process.env.AGENT_ID ?? "";
 const agentAliasId = process.env.AGENT_ALIAS_ID ?? "";
@@ -40,16 +43,6 @@ if (userPoolId && clientId) {
 interface ChatRequest {
   message: string;
   sessionId?: string;
-}
-
-async function generatePresignedUrl(
-  bucket: string,
-  s3Uri: string
-): Promise<string> {
-  // Presigned URLs require the S3 key, not the full URI.
-  // s3Uri format: s3://bucket/key or arn:aws:s3:::bucket/key
-  const key = s3Uri.replace(/^s3:\/\/[^/]+\//, "").replace(/^arn:aws:s3:::[^/]+\//, "");
-  return `https://${bucket}.s3.${process.env.AWS_REGION}.amazonaws.com/${encodeURIComponent(key)}`;
 }
 
 export async function handler(
@@ -83,8 +76,8 @@ export async function handler(
     });
 
     // 4. Invoke Bedrock AgentCore with department-scoped metadata filter
-    const citations: Array<{ referenceId: string; url: string }> = [];
-    let answerParts: string[] = [];
+    const citations: CitationLink[] = [];
+    const answerParts: string[] = [];
     let hasChunks = false;
 
     for await (const chunk of invokeAgent({
@@ -101,13 +94,17 @@ export async function handler(
       if (chunk.citations) {
         for (const c of chunk.citations) {
           if (c.s3Uri && c.referenceId) {
-            citations.push({
-              referenceId: c.referenceId,
-              url: await generatePresignedUrl(
-                process.env.DOCUMENTS_BUCKET_NAME ?? "",
-                c.s3Uri
-              ),
-            });
+            // Presigned URL with department access re-checked at
+            // link-generation time (spec 4.4); inaccessible citations are
+            // omitted, not errored.
+            const link = await presignCitation(
+              s3,
+              process.env.DOCUMENTS_BUCKET_NAME ?? "",
+              c.s3Uri,
+              c.referenceId,
+              auth.departments
+            );
+            if (link) citations.push(link);
           }
         }
       }
