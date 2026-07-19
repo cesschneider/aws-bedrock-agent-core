@@ -9,6 +9,7 @@ import { ChatHandler } from "./constructs/chat-handler";
 import { KnowledgeBase } from "./constructs/knowledge-base";
 import { RagAgent } from "./constructs/agent";
 import { UploadApi } from "./constructs/upload-api";
+import { VectorIndex } from "./constructs/vector-index";
 
 export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
   /** Deployment environment slug: dev | stg | prd */
@@ -19,14 +20,6 @@ export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
    * Useful in tests where SSM context resolution isn't available.
    */
   googleClientSecretOverride?: string;
-  /**
-   * ARN of the S3 Vectors index backing the Bedrock Knowledge Base. S3
-   * Vectors has no CDK support yet, so the index is provisioned outside this
-   * stack (Phase 0 spike outcome) and passed in. When omitted, the
-   * KnowledgeBase construct is skipped and kb-sync keeps its placeholder IDs
-   * — this keeps synth/deploy working until the index exists per env.
-   */
-  vectorIndexArn?: string;
 }
 
 /**
@@ -43,9 +36,10 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
   public readonly conversationHistory: ConversationHistory;
   public readonly identity: Identity;
   public readonly chatHandler: ChatHandler;
-  public readonly knowledgeBase?: KnowledgeBase;
-  public readonly ragAgent?: RagAgent;
+  public readonly knowledgeBase: KnowledgeBase;
+  public readonly ragAgent: RagAgent;
   public readonly uploadApi: UploadApi;
+  public readonly vectorIndex: VectorIndex;
 
   constructor(scope: Construct, id: string, props: RagKnowledgeAgentStackProps) {
     super(scope, id, props);
@@ -58,33 +52,31 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
       envName: this.envName,
     });
 
-    // The Knowledge Base needs an S3 Vectors index ARN, provisioned outside
-    // CDK per environment (Phase 0 spike outcome). Until it's supplied via
-    // props/context, kb-sync runs with placeholder IDs and the KB construct
-    // is skipped so synth/deploy stay green.
-    const vectorIndexArn =
-      props.vectorIndexArn ?? this.node.tryGetContext("vectorIndexArn");
-    if (vectorIndexArn) {
-      this.knowledgeBase = new KnowledgeBase(this, "KnowledgeBase", {
-        envName: this.envName,
-        sourceBucket: this.uploadPipeline.bucket,
-        vectorIndexArn,
-      });
+    // S3 Vectors bucket + index are IaC-managed like everything else
+    // (AWS::S3Vectors::* CloudFormation resources — no CLI-created
+    // resources in this project, ever).
+    this.vectorIndex = new VectorIndex(this, "VectorIndex", {
+      envName: this.envName,
+    });
 
-      this.ragAgent = new RagAgent(this, "RagAgent", {
-        envName: this.envName,
-        knowledgeBaseId: this.knowledgeBase.knowledgeBase.attrKnowledgeBaseId,
-        knowledgeBaseArn: this.knowledgeBase.knowledgeBase.attrKnowledgeBaseArn,
-      });
-    }
+    this.knowledgeBase = new KnowledgeBase(this, "KnowledgeBase", {
+      envName: this.envName,
+      sourceBucket: this.uploadPipeline.bucket,
+      vectorIndexArn: this.vectorIndex.indexArn,
+    });
+    this.knowledgeBase.node.addDependency(this.vectorIndex);
+
+    this.ragAgent = new RagAgent(this, "RagAgent", {
+      envName: this.envName,
+      knowledgeBaseId: this.knowledgeBase.knowledgeBase.attrKnowledgeBaseId,
+      knowledgeBaseArn: this.knowledgeBase.knowledgeBase.attrKnowledgeBaseArn,
+    });
 
     this.kbSync = new KbSync(this, "KbSync", {
       envName: this.envName,
       sourceBucket: this.uploadPipeline.bucket,
-      knowledgeBaseId:
-        this.knowledgeBase?.knowledgeBase.attrKnowledgeBaseId ?? "PENDING-KB-CONSTRUCT",
-      dataSourceId:
-        this.knowledgeBase?.dataSource.attrDataSourceId ?? "PENDING-DATA-SOURCE-CONSTRUCT",
+      knowledgeBaseId: this.knowledgeBase.knowledgeBase.attrKnowledgeBaseId,
+      dataSourceId: this.knowledgeBase.dataSource.attrDataSourceId,
     });
 
     this.conversationHistory = new ConversationHistory(this, "ConversationHistory", {
@@ -117,8 +109,8 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
       documentsBucket: this.uploadPipeline.bucket,
       cognitoUserPoolId: this.identity.userPool.userPoolId,
       cognitoClientId: this.identity.userPoolClient.userPoolClientId,
-      agentId: this.ragAgent?.agent.attrAgentId,
-      agentAliasId: this.ragAgent?.agentAlias.attrAgentAliasId,
+      agentId: this.ragAgent.agent.attrAgentId,
+      agentAliasId: this.ragAgent.agentAlias.attrAgentAliasId,
     });
 
     this.uploadApi = new UploadApi(this, "UploadApi", {
