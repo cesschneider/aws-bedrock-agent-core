@@ -1,6 +1,6 @@
 import type { PreTokenGenerationV2TriggerEvent } from "aws-lambda";
 import { COMPANY_WIDE } from "../common/auth";
-import { GoogleAdminGroupsFetcher } from "./google-admin-groups-fetcher";
+import type { GoogleAdminGroupsFetcher as GoogleAdminGroupsFetcherType } from "./google-admin-groups-fetcher";
 
 export interface GroupsFetcher {
   /** Returns the Google Workspace group emails the user belongs to. */
@@ -80,10 +80,27 @@ export async function buildGroupOverride(
 // setup exists, this fetcher will fail at runtime — it is not exercised by
 // unit tests, which cover buildGroupOverride/mapWorkspaceGroupsToDepartments
 // against fake fetchers instead.
-const googleAdminGroupsFetcher = new GoogleAdminGroupsFetcher();
+//
+// Cognito enforces its own short timeout on auth Lambda triggers, well under
+// this function's configured 10s. The `googleapis` package is large enough
+// that importing it (and constructing the JWT client) at cold start blew
+// past that ceiling on EVERY invocation — including native-user logins
+// (e.g. the dev CLI) that never call this fetcher at all. Load it lazily,
+// only when a Google-federated user actually needs it.
+let cachedFetcher: GoogleAdminGroupsFetcherType | undefined;
+async function getGoogleAdminGroupsFetcher(): Promise<GoogleAdminGroupsFetcherType> {
+  if (!cachedFetcher) {
+    const { GoogleAdminGroupsFetcher } = await import("./google-admin-groups-fetcher");
+    cachedFetcher = new GoogleAdminGroupsFetcher();
+  }
+  return cachedFetcher;
+}
 
 export const handler = async (
   event: PreTokenGenerationV2TriggerEvent
 ): Promise<PreTokenGenerationV2TriggerEvent> => {
-  return buildGroupOverride(event, googleAdminGroupsFetcher);
+  const fetcher: GroupsFetcher = {
+    fetchGroupsForUser: async (email) => (await getGoogleAdminGroupsFetcher()).fetchGroupsForUser(email),
+  };
+  return buildGroupOverride(event, fetcher);
 };
