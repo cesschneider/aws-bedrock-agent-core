@@ -144,3 +144,4 @@ Notes: AgentCore's native session/memory handles in-session (short-term) context
 - Confirm Bedrock Knowledge Base's current support level for S3 Vectors as a backend (T6) before committing infra code — it's newer than the OpenSearch Serverless integration.
 - Define the dev/staging/prod GitHub Actions promotion flow (auto-deploy vs. manual approval) (T11).
 - Define the exact AgentCore-session-to-DynamoDB handoff mechanism (T15) — likely needs a short implementation spike.
+

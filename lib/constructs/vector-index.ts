@@ -70,3 +70,4 @@ export class VectorIndex extends Construct {
     new cdk.CfnOutput(this, "VectorIndexArn", { value: this.indexArn });
   }
 }
+

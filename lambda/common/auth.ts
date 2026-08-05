@@ -29,3 +29,4 @@ export function parseDepartmentClaims(claims: Record<string, string> | undefined
 export function userCanAccessDepartment(userDepartments: string[], targetDepartment: string): boolean {
   return userDepartments.includes(targetDepartment);
 }
+

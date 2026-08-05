@@ -81,3 +81,4 @@ describe("Identity", () => {
     template.resourceCountIs("AWS::Cognito::UserPoolGroup", 0);
   });
 });
+

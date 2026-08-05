@@ -20,3 +20,4 @@ Project conventions:
 - Follow existing test patterns for structure and assertions
 
 Tests must pass CI (typecheck + Jest). The project uses `isolatedModules: true` in ts-jest, so tests don't need to pass type-checking — `npm run typecheck` handles that separately. Do not run tests locally — verify via `gh run list` after pushing.
+

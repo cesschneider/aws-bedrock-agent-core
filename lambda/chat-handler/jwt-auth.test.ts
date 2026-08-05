@@ -131,3 +131,4 @@ describe("authenticate", () => {
     expect(result.departments).toEqual(["company-wide"]);
   });
 });
+

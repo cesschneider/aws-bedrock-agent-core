@@ -406,3 +406,4 @@ No CRITICAL GAP rows remain unaddressed — all identified gaps got a spec-level
 | 18 | Eng | Malware/content scanning deferred to TODOS.md | Taste (user decided) | P3 (new infra required) | User accepted risk at launch scale over adding new AWS service now | Add GuardDuty/ClamAV now |
 | 19 | Eng | Rate limiting reaffirmed as default-only | Taste (user decided) | N/A — re-litigation of prior decision | User confirmed original tech-questionnaire decision stands against new DoS/cost angle | Add per-user throttling now |
 | 20 | DX | Phase exited — no external developer-facing surface | Mechanical | Skill's own applicability gate | Internal ops tool; maintainability already covered by Eng review | Forcing external-product DX methodology onto internal infra |
+

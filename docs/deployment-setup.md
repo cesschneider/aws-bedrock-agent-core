@@ -150,3 +150,4 @@ Required reviewers get a notification to approve before `prd` runs.
 - **"Not authorized to perform sts:AssumeRoleWithWebIdentity"** — the OIDC trust policy's `sub` condition doesn't match. Confirm you're pushing to `main`, `development`, or `staging` (the bootstrap stack's `allowedRefs` trusts all three).
 - **"User is not authorized to perform: sts:AssumeRole on resource: cdk-hnb659fds-deploy-role-..."** — `cdk bootstrap` (step 1.2) wasn't run in that account/region, or was run with a different qualifier than the default `hnb659fds`.
 - **Deploy workflow shows red X immediately with no AWS error** — `AWS_DEPLOY_ROLE_ARN` variable isn't set for that GitHub Environment (Part 2.2 not done yet for that environment).
+

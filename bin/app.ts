@@ -38,3 +38,4 @@ function nonEmptyContext(app: cdk.App, key: string): string | undefined {
   const v = app.node.tryGetContext(key);
   return typeof v === "string" && v.trim().length > 0 ? v.trim() : undefined;
 }
+

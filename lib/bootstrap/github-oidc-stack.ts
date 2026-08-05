@@ -118,3 +118,4 @@ export class GitHubOidcStack extends cdk.Stack {
     new cdk.CfnOutput(this, "DeployRoleArn", { value: this.deployRole.roleArn });
   }
 }
+

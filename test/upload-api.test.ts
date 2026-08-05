@@ -38,3 +38,4 @@ describe("UploadApi", () => {
     expect(authorizers).toContain("cognito-idp.us-east-1.amazonaws.com");
   });
 });
+

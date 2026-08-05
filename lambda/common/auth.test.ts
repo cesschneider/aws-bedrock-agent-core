@@ -43,3 +43,4 @@ describe("userCanAccessDepartment", () => {
     expect(userCanAccessDepartment(["dept-eng", COMPANY_WIDE], "dept-hr")).toBe(false);
   });
 });
+

@@ -101,3 +101,4 @@ Rough sizing helps size OpenSearch Serverless, Lambda concurrency, and cost esti
 - Conversation history retention/TTL policy still needs a decision.
 - Account structure for dev/staging/prod (single account vs. multi-account) still needs a decision.
 - Document growth rate and query volume not yet estimated — needed to size OpenSearch Serverless OCUs and Lambda concurrency.
+

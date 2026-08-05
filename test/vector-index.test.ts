@@ -49,3 +49,4 @@ describe("VectorIndex", () => {
     expect(Object.values(devBuckets)[0].DeletionPolicy).toBe("Delete");
   });
 });
+

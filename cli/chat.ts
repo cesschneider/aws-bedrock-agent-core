@@ -487,3 +487,4 @@ main().catch((err: unknown) => {
   console.error(`error: ${(err as Error).message ?? String(err)}`);
   process.exit(1);
 });
+

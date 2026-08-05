@@ -68,3 +68,4 @@ describe("KnowledgeBase", () => {
     expect(roles).toContain("aws:SourceAccount");
   });
 });
+

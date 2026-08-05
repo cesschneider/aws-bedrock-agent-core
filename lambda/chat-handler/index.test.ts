@@ -154,3 +154,4 @@ describe("chat handler", () => {
     expect(JSON.parse(res.body as string).sessionId).toBe("session-42");
   });
 });
+

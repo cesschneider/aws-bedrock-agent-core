@@ -136,3 +136,4 @@ export const handler = async (event: S3Event): Promise<void> => {
   }
   await handleS3Event(event, { s3, dynamo, bedrockAgent, dedupTableName, knowledgeBaseId, dataSourceId });
 };
+

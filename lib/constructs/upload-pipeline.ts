@@ -63,3 +63,4 @@ export class UploadPipeline extends Construct {
     this.bucket.grantPut(this.uploadHandler);
   }
 }
+

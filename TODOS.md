@@ -45,3 +45,4 @@ Deferred scope from plan reviews — not blocking current phases, tracked for la
 - **Effort estimate:** S (human) → S with CC+gstack (GuardDuty option); M (human) → S-M with CC+gstack (custom ClamAV option).
 - **Priority:** P2
 - **Depends on:** None — can be added independently at any phase.
+

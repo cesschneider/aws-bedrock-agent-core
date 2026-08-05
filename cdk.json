@@ -27,3 +27,4 @@
     "@aws-cdk/aws-lambda:recognizeVersionProps": true
   }
 }
+

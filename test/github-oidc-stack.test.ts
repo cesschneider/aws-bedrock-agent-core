@@ -27,3 +27,4 @@ describe("GitHubOidcStack", () => {
     expect(json).toContain("repo:example-org*/example-repo*:ref:refs/heads/main");
   });
 });
+

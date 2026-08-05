@@ -21,3 +21,4 @@ Documentation conventions:
 - Changelog entries follow Keep a Changelog format
 
 Keep docs concise and actionable. Include code examples where helpful. Avoid documenting what's already obvious from the code — focus on architecture decisions, setup steps, and operational procedures.
+

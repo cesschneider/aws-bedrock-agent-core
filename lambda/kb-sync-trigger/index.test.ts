@@ -149,3 +149,4 @@ describe("handleS3Event", () => {
     await expect(handleS3Event(event, deps)).rejects.toThrow("StartIngestionJob failed");
   });
 });
+

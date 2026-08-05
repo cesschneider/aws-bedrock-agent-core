@@ -8,3 +8,4 @@ module.exports = {
   },
   collectCoverageFrom: ["lib/**/*.ts", "lambda/**/*.ts", "bin/**/*.ts"],
 };
+

@@ -103,3 +103,4 @@ export class KbSync extends Construct {
     );
   }
 }
+

@@ -22,3 +22,4 @@ Review checklist:
 - Reuse: no duplicated logic, uses existing utils/constructs
 
 Provide feedback by priority: Critical → Warning → Suggestion. Include file paths and line references. Keep the summary under 300 words unless there are critical issues.
+

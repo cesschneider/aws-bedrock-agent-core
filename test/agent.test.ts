@@ -69,3 +69,4 @@ describe("RagAgent", () => {
     expect(roles).toContain("AmazonBedrockExecutionRoleForAgents_rag-dev");
   });
 });
+

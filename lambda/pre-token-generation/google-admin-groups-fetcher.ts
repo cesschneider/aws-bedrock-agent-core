@@ -60,3 +60,4 @@ export class GoogleAdminGroupsFetcher implements GroupsFetcher {
     return JSON.parse(value);
   }
 }
+

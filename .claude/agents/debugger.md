@@ -28,3 +28,4 @@ For each issue provide:
 - How to verify the fix (usually via CI — never run tests locally in this project)
 
 Focus on fixing the underlying issue, not the symptoms.
+

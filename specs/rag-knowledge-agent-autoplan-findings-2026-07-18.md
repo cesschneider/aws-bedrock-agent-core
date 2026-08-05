@@ -72,3 +72,4 @@ The DX review's own applicability gate asks whether the plan has an actual exter
 **Tracked but not blocking:** 4 items in `TODOS.md` (Slack/Teams bot, eval suite, canary model bumps, malware scanning).
 
 **Full audit trail** of every decision (mechanical vs. taste, which principle applied, what was rejected) is in the spec's `## Decision Audit Trail` table.
+

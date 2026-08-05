@@ -15,3 +15,4 @@ Close out the current unit of work and save state so the user can safely run `/c
 3. **If the subagent flagged uncommitted work or unpushed commits**, surface that to the user directly. Do not compact past uncommitted work.
 
 4. **Report back in 1-2 sentences**: what was closed out, where the log entry lives, and that it's now safe to `/compact`.
+

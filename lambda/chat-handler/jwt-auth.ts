@@ -144,3 +144,4 @@ export async function authenticate(authHeader: string | undefined): Promise<Auth
 
   return { userId: sub, departments };
 }
+
