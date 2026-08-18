@@ -1,0 +1,158 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 900" font-family="JetBrains Mono, Menlo, Consolas, monospace">
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+    </pattern>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrow-cyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#22d3ee"/>
+    </marker>
+    <marker id="arrow-rose" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#fb7185"/>
+    </marker>
+  </defs>
+
+  <rect width="1280" height="900" fill="#020617"/>
+  <rect width="1280" height="900" fill="url(#grid)"/>
+
+  <!-- Title -->
+  <text x="40" y="48" fill="#e2e8f0" font-size="22" font-weight="bold">RAG Knowledge Agent — Architecture</text>
+  <text x="40" y="70" fill="#64748b" font-size="12">aws-bedrock-agent-core · Bedrock Nova Pro + S3 Vectors · department-scoped retrieval</text>
+
+  <!-- ===================== AWS ACCOUNT BOUNDARY ===================== -->
+  <rect x="30" y="90" width="1220" height="780" rx="12" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="8 4"/>
+  <text x="50" y="118" fill="#fbbf24" font-size="12" font-weight="bold">AWS Account — dev (us-east-1)</text>
+
+  <!-- ===================== CLIENT (external) ===================== -->
+  <rect x="60" y="150" width="220" height="70" rx="6" fill="#0f172a"/>
+  <rect x="60" y="150" width="220" height="70" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="80" y="180" fill="#e2e8f0" font-size="13" font-weight="bold">Web SPA / Chat CLI</text>
+  <text x="80" y="198" fill="#94a3b8" font-size="10">React frontend · cli/chat.ts</text>
+
+  <!-- ===================== COGNITO (security) ===================== -->
+  <rect x="60" y="300" width="220" height="120" rx="6" fill="#0f172a"/>
+  <rect x="60" y="300" width="220" height="120" rx="6" fill="rgba(136,19,55,0.4)" stroke="#fb7185" stroke-width="1.5"/>
+  <text x="80" y="328" fill="#e2e8f0" font-size="13" font-weight="bold">Cognito User Pool</text>
+  <text x="80" y="346" fill="#fb7185" font-size="10">Google Workspace federation</text>
+  <text x="80" y="362" fill="#94a3b8" font-size="10">pre-token-generation trigger</text>
+  <text x="80" y="378" fill="#94a3b8" font-size="10">→ fresh dept groups claim</text>
+  <text x="80" y="398" fill="#64748b" font-size="9">dev-tester@example.invalid (dev)</text>
+
+  <!-- ===================== CHAT HANDLER (backend) ===================== -->
+  <rect x="380" y="300" width="240" height="120" rx="6" fill="#0f172a"/>
+  <rect x="380" y="300" width="240" height="120" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="400" y="328" fill="#e2e8f0" font-size="13" font-weight="bold">ChatHandler Lambda</text>
+  <text x="400" y="346" fill="#34d399" font-size="10">Function URL (POST)</text>
+  <text x="400" y="362" fill="#94a3b8" font-size="10">JWT validation</text>
+  <text x="400" y="378" fill="#94a3b8" font-size="10">injects sessionAttributes</text>
+  <text x="400" y="394" fill="#94a3b8" font-size="10">(department filter)</text>
+
+  <!-- ===================== BEDROCK AGENT (cloud) ===================== -->
+  <rect x="720" y="300" width="240" height="120" rx="6" fill="#0f172a"/>
+  <rect x="720" y="300" width="240" height="120" rx="6" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="740" y="328" fill="#e2e8f0" font-size="13" font-weight="bold">Bedrock Agent</text>
+  <text x="740" y="346" fill="#fbbf24" font-size="10">Nova Pro (foundation model)</text>
+  <text x="740" y="362" fill="#94a3b8" font-size="10">grounding instruction</text>
+  <text x="740" y="378" fill="#94a3b8" font-size="10">retrieve + generate + cite</text>
+  <text x="740" y="394" fill="#94a3b8" font-size="10">agent alias (dev)</text>
+
+  <!-- ===================== KNOWLEDGE BASE (cloud) ===================== -->
+  <rect x="720" y="500" width="240" height="120" rx="6" fill="#0f172a"/>
+  <rect x="720" y="500" width="240" height="120" rx="6" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="740" y="528" fill="#e2e8f0" font-size="13" font-weight="bold">Bedrock Knowledge Base</text>
+  <text x="740" y="546" fill="#fbbf24" font-size="10">Titan Text Embeddings V2</text>
+  <text x="740" y="562" fill="#94a3b8" font-size="10">semantic chunking (300 tok)</text>
+  <text x="740" y="578" fill="#94a3b8" font-size="10">data source: raw-documents</text>
+  <text x="740" y="594" fill="#94a3b8" font-size="10">RETAIN on delete</text>
+
+  <!-- ===================== S3 VECTORS (database) ===================== -->
+  <rect x="720" y="700" width="240" height="100" rx="6" fill="#0f172a"/>
+  <rect x="720" y="700" width="240" height="100" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="740" y="728" fill="#e2e8f0" font-size="13" font-weight="bold">S3 Vectors Index</text>
+  <text x="740" y="746" fill="#a78bfa" font-size="10">1024-dim float32 · cosine</text>
+  <text x="740" y="762" fill="#94a3b8" font-size="10">department = filterable metadata</text>
+  <text x="740" y="778" fill="#94a3b8" font-size="10">AWS::S3Vectors::Index (CfnResource)</text>
+
+  <!-- ===================== RAW DOCS BUCKET (database) ===================== -->
+  <rect x="380" y="500" width="240" height="100" rx="6" fill="#0f172a"/>
+  <rect x="380" y="500" width="240" height="100" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="400" y="528" fill="#e2e8f0" font-size="13" font-weight="bold">Raw Documents S3</text>
+  <text x="400" y="546" fill="#a78bfa" font-size="10">raw-documents-dev-…</text>
+  <text x="400" y="562" fill="#94a3b8" font-size="10">key prefix = department</text>
+  <text x="400" y="578" fill="#94a3b8" font-size="10">.pdf .docx .txt .pptx</text>
+
+  <!-- ===================== KB SYNC TRIGGER (backend) ===================== -->
+  <rect x="380" y="700" width="240" height="100" rx="6" fill="#0f172a"/>
+  <rect x="380" y="700" width="240" height="100" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="400" y="728" fill="#e2e8f0" font-size="13" font-weight="bold">kb-sync-trigger Lambda</text>
+  <text x="400" y="746" fill="#34d399" font-size="10">S3 ObjectCreated event</text>
+  <text x="400" y="762" fill="#94a3b8" font-size="10">dedup (DynamoDB 24h TTL)</text>
+  <text x="400" y="778" fill="#94a3b8" font-size="10">writes .metadata.json sidecar</text>
+
+  <!-- ===================== UPLOAD API (backend) ===================== -->
+  <rect x="60" y="500" width="220" height="100" rx="6" fill="#0f172a"/>
+  <rect x="60" y="500" width="220" height="100" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="80" y="528" fill="#e2e8f0" font-size="13" font-weight="bold">Upload API</text>
+  <text x="80" y="546" fill="#34d399" font-size="10">API Gateway + Lambda</text>
+  <text x="80" y="562" fill="#94a3b8" font-size="10">presigned-POST upload</text>
+  <text x="80" y="578" fill="#94a3b8" font-size="10">file-type + JWT dept check</text>
+
+  <!-- ===================== CONVERSATION HISTORY (database) ===================== -->
+  <rect x="60" y="700" width="220" height="100" rx="6" fill="#0f172a"/>
+  <rect x="60" y="700" width="220" height="100" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="80" y="728" fill="#e2e8f0" font-size="13" font-weight="bold">Conversation History</text>
+  <text x="80" y="746" fill="#a78bfa" font-size="10">DynamoDB table</text>
+  <text x="80" y="762" fill="#94a3b8" font-size="10">multi-turn session state</text>
+
+  <!-- ===================== ARROWS ===================== -->
+  <!-- Client -> ChatHandler (JWT) -->
+  <path d="M 170 220 L 170 260 L 500 260 L 500 300" fill="none" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#arrow-rose)"/>
+  <text x="300" y="252" fill="#fb7185" font-size="9">JWT (Cognito)</text>
+
+  <!-- Client -> Cognito (auth) -->
+  <path d="M 170 220 L 170 300" fill="none" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#arrow-rose)"/>
+
+  <!-- ChatHandler -> Bedrock Agent -->
+  <path d="M 620 360 L 720 360" fill="none" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrow-cyan)"/>
+  <text x="630" y="352" fill="#22d3ee" font-size="9">InvokeAgent</text>
+
+  <!-- Bedrock Agent -> Knowledge Base -->
+  <path d="M 840 420 L 840 500" fill="none" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrow-cyan)"/>
+  <text x="850" y="465" fill="#22d3ee" font-size="9">Retrieve</text>
+
+  <!-- Knowledge Base -> S3 Vectors -->
+  <path d="M 840 620 L 840 700" fill="none" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Raw Docs -> KB Sync Trigger -->
+  <path d="M 500 600 L 500 700" fill="none" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="510" y="655" fill="#34d399" font-size="9">ObjectCreated</text>
+
+  <!-- KB Sync Trigger -> Knowledge Base (StartIngestionJob) -->
+  <path d="M 620 750 L 720 560" fill="none" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="640" y="680" fill="#34d399" font-size="9">StartIngestionJob</text>
+
+  <!-- Upload API -> Raw Docs -->
+  <path d="M 280 550 L 380 550" fill="none" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ChatHandler -> Conversation History -->
+  <path d="M 380 360 L 280 360 L 280 700" fill="none" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ===================== LEGEND ===================== -->
+  <rect x="30" y="820" width="1220" height="60" rx="6" fill="#0f172a" stroke="#1e293b" stroke-width="1"/>
+  <rect x="50" y="838" width="14" height="14" rx="3" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="72" y="850" fill="#94a3b8" font-size="10">Backend (Lambda)</text>
+  <rect x="200" y="838" width="14" height="14" rx="3" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="222" y="850" fill="#94a3b8" font-size="10">AWS / Bedrock</text>
+  <rect x="360" y="838" width="14" height="14" rx="3" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="382" y="850" fill="#94a3b8" font-size="10">Storage / DB</text>
+  <rect x="500" y="838" width="14" height="14" rx="3" fill="rgba(136,19,55,0.4)" stroke="#fb7185" stroke-width="1.5"/>
+  <text x="522" y="850" fill="#94a3b8" font-size="10">Security / Auth</text>
+  <rect x="660" y="838" width="14" height="14" rx="3" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="682" y="850" fill="#94a3b8" font-size="10">External / Client</text>
+  <line x1="820" y1="845" x2="860" y2="845" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="4 4"/>
+  <text x="870" y="850" fill="#94a3b8" font-size="10">Auth flow (JWT)</text>
+  <line x1="1000" y1="845" x2="1040" y2="845" stroke="#22d3ee" stroke-width="1.5"/>
+  <text x="1050" y="850" fill="#94a3b8" font-size="10">Data flow</text>
+</svg>
