@@ -23,11 +23,25 @@ export interface KbSyncDependencies {
 }
 
 /**
+ * Extracts the tenant (organization) from the object key prefix, per the
+ * multi-tenant convention `{tenantId}/{department}/{uuid}-{filename}`
+ * (multi-tenant design §4.2). The tenant is the FIRST path segment.
+ */
+export function tenantFromKey(key: string): string {
+  const [tenant] = key.split("/");
+  if (!tenant) {
+    throw new Error(`Cannot determine tenant from object key "${key}"`);
+  }
+  return tenant;
+}
+
+/**
  * Extracts the department from the object key prefix, per the upload
- * convention `{department}/{uuid}-{filename}` (spec Section 4.2/5).
+ * convention `{tenantId}/{department}/{uuid}-{filename}` (multi-tenant
+ * design §4.2). The department is the SECOND path segment.
  */
 export function departmentFromKey(key: string): string {
-  const [department] = key.split("/");
+  const [, department] = key.split("/");
   if (!department) {
     throw new Error(`Cannot determine department from object key "${key}"`);
   }
@@ -73,13 +87,14 @@ async function writeMetadataSidecar(
   s3: S3Client,
   bucket: string,
   objectKey: string,
+  tenantId: string,
   department: string
 ): Promise<void> {
   await s3.send(
     new PutObjectCommand({
       Bucket: bucket,
       Key: `${objectKey}${METADATA_SUFFIX}`,
-      Body: JSON.stringify({ metadataAttributes: { department } }),
+      Body: JSON.stringify({ metadataAttributes: { tenantId, department } }),
       ContentType: "application/json",
     })
   );
@@ -99,8 +114,9 @@ async function processRecord(record: S3EventRecord, deps: KbSyncDependencies): P
     return; // duplicate delivery of an event we already processed
   }
 
+  const tenantId = tenantFromKey(objectKey);
   const department = departmentFromKey(objectKey);
-  await writeMetadataSidecar(deps.s3, bucket, objectKey, department);
+  await writeMetadataSidecar(deps.s3, bucket, objectKey, tenantId, department);
 
   await deps.bedrockAgent.send(
     new StartIngestionJobCommand({

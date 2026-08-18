@@ -47,7 +47,9 @@ export class VectorIndex extends Construct {
         Dimension: 1024, // Titan Text Embeddings V2
         DistanceMetric: "cosine",
         MetadataConfiguration: {
-          // department drives retrieval-time filtering; keep it filterable.
+          // tenantId (hard isolation) and department (soft scoping) drive
+          // retrieval-time filtering; keep both filterable. Only the chunk
+          // text is non-filterable.
           NonFilterableMetadataKeys: ["AMAZON_BEDROCK_TEXT"],
         },
       },

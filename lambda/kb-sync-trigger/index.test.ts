@@ -6,7 +6,7 @@ import {
   ConditionalCheckFailedException,
 } from "@aws-sdk/client-dynamodb";
 import { BedrockAgentClient, StartIngestionJobCommand } from "@aws-sdk/client-bedrock-agent";
-import { claimForProcessing, departmentFromKey, handleS3Event, KbSyncDependencies } from "./index";
+import { claimForProcessing, departmentFromKey, tenantFromKey, handleS3Event, KbSyncDependencies } from "./index";
 
 function makeS3Event(overrides: { key: string; etag?: string; bucket?: string }): S3Event {
   return {
@@ -29,17 +29,27 @@ function makeS3Event(overrides: { key: string; etag?: string; bucket?: string })
   };
 }
 
-describe("departmentFromKey", () => {
-  it("extracts the department from the key prefix", () => {
-    expect(departmentFromKey("dept-engineering/uuid-report.pdf")).toBe("dept-engineering");
+describe("tenantFromKey", () => {
+  it("extracts the tenant from the first key segment", () => {
+    expect(tenantFromKey("acme-com/dept-engineering/uuid-report.pdf")).toBe("acme-com");
   });
 
-  it("throws when the key has no department prefix", () => {
-    expect(() => departmentFromKey("report.pdf")).not.toThrow(); // "report.pdf" splits to itself, still a string
+  it("throws when the key has no segments", () => {
+    expect(() => tenantFromKey("")).toThrow();
+  });
+});
+
+describe("departmentFromKey", () => {
+  it("extracts the department from the second key segment", () => {
+    expect(departmentFromKey("acme-com/dept-engineering/uuid-report.pdf")).toBe("dept-engineering");
   });
 
   it("extracts company-wide as a department value", () => {
-    expect(departmentFromKey("company-wide/uuid-handbook.pdf")).toBe("company-wide");
+    expect(departmentFromKey("acme-com/company-wide/uuid-handbook.pdf")).toBe("company-wide");
+  });
+
+  it("throws when the key has no department segment", () => {
+    expect(() => departmentFromKey("acme-com")).toThrow();
   });
 });
 
@@ -90,15 +100,15 @@ describe("handleS3Event", () => {
 
   it("writes a metadata sidecar and starts an ingestion job for a new object", async () => {
     const deps = makeDeps();
-    const event = makeS3Event({ key: "dept-engineering/uuid-report.pdf" });
+    const event = makeS3Event({ key: "acme-com/dept-engineering/uuid-report.pdf" });
 
     await handleS3Event(event, deps);
 
     expect(deps.s3.send).toHaveBeenCalledWith(expect.any(PutObjectCommand));
     const putCall = (deps.s3.send as jest.Mock).mock.calls[0][0] as PutObjectCommand;
-    expect(putCall.input.Key).toBe("dept-engineering/uuid-report.pdf.metadata.json");
+    expect(putCall.input.Key).toBe("acme-com/dept-engineering/uuid-report.pdf.metadata.json");
     expect(JSON.parse(putCall.input.Body as string)).toEqual({
-      metadataAttributes: { department: "dept-engineering" },
+      metadataAttributes: { tenantId: "acme-com", department: "dept-engineering" },
     });
     expect(deps.bedrockAgent.send).toHaveBeenCalledWith(expect.any(StartIngestionJobCommand));
   });
@@ -110,7 +120,7 @@ describe("handleS3Event", () => {
         .mockRejectedValue(new ConditionalCheckFailedException({ message: "dup", $metadata: {} })),
     } as unknown as DynamoDBClient;
     const deps = makeDeps({ dynamo });
-    const event = makeS3Event({ key: "dept-engineering/uuid-report.pdf" });
+    const event = makeS3Event({ key: "acme-com/dept-engineering/uuid-report.pdf" });
 
     await handleS3Event(event, deps);
 
@@ -120,7 +130,7 @@ describe("handleS3Event", () => {
 
   it("ignores events for its own metadata sidecar objects (no infinite loop)", async () => {
     const deps = makeDeps();
-    const event = makeS3Event({ key: "dept-engineering/uuid-report.pdf.metadata.json" });
+    const event = makeS3Event({ key: "acme-com/dept-engineering/uuid-report.pdf.metadata.json" });
 
     await handleS3Event(event, deps);
 
@@ -131,12 +141,12 @@ describe("handleS3Event", () => {
 
   it("decodes URL-encoded S3 keys (e.g. spaces as +)", async () => {
     const deps = makeDeps();
-    const event = makeS3Event({ key: "dept-engineering/uuid-my+report.pdf" });
+    const event = makeS3Event({ key: "acme-com/dept-engineering/uuid-my+report.pdf" });
 
     await handleS3Event(event, deps);
 
     const putCall = (deps.s3.send as jest.Mock).mock.calls[0][0] as PutObjectCommand;
-    expect(putCall.input.Key).toBe("dept-engineering/uuid-my report.pdf.metadata.json");
+    expect(putCall.input.Key).toBe("acme-com/dept-engineering/uuid-my report.pdf.metadata.json");
   });
 
   it("propagates ingestion job failures so Lambda's async retry/DLQ handles them", async () => {
@@ -144,7 +154,7 @@ describe("handleS3Event", () => {
       send: jest.fn().mockRejectedValue(new Error("StartIngestionJob failed")),
     } as unknown as BedrockAgentClient;
     const deps = makeDeps({ bedrockAgent });
-    const event = makeS3Event({ key: "dept-engineering/uuid-report.pdf" });
+    const event = makeS3Event({ key: "acme-com/dept-engineering/uuid-report.pdf" });
 
     await expect(handleS3Event(event, deps)).rejects.toThrow("StartIngestionJob failed");
   });

@@ -61,11 +61,11 @@ function parseBody(rawBody: string | undefined): UploadRequestBody {
   return { department, filename, contentType };
 }
 
-export function buildObjectKey(department: string, filename: string): string {
+export function buildObjectKey(tenantId: string, department: string, filename: string): string {
   // Reject path traversal / separator injection in the original filename —
   // it becomes part of the S3 key, never trust it verbatim.
   const safeFilename = filename.replace(/[/\\]/g, "_");
-  return `${department}/${randomUUID()}-${safeFilename}`;
+  return `${tenantId}/${department}/${randomUUID()}-${safeFilename}`;
 }
 
 export async function handleUploadRequest(
@@ -86,6 +86,16 @@ export async function handleUploadRequest(
   const claims = event.requestContext.authorizer.jwt.claims as Record<string, string>;
   const userDepartments = parseDepartmentClaims(claims);
 
+  // Tenant is derived from the verified JWT (multi-tenant design §4.2/§6) —
+  // never from the request body. Missing tenant fails closed.
+  const tenantId = claims["custom:tenantId"];
+  if (!tenantId || tenantId.trim().length === 0) {
+    return {
+      statusCode: 401,
+      body: JSON.stringify({ error: "Missing tenant claim (custom:tenantId)" }),
+    };
+  }
+
   // Server-side enforcement — a user cannot upload into a department they
   // don't belong to, except company-wide, which anyone may upload to
   // (spec Section 4.2 / Section 6, Security Considerations).
@@ -96,7 +106,7 @@ export async function handleUploadRequest(
     };
   }
 
-  const key = buildObjectKey(body.department, body.filename);
+  const key = buildObjectKey(tenantId.trim(), body.department, body.filename);
 
   const { url, fields } = await createPresignedPost(s3Client, {
     Bucket: bucketName,
@@ -107,6 +117,7 @@ export async function handleUploadRequest(
     ],
     Fields: {
       "Content-Type": body.contentType,
+      "x-amz-meta-tenant-id": tenantId.trim(),
       "x-amz-meta-department": body.department,
     },
     Expires: PRESIGNED_POST_EXPIRY_SECONDS,
