@@ -69,7 +69,7 @@ This namespacing is internal (claims, metadata, filters). The human-facing depar
 ### 4.1 Identity — add a tenant claim
 
 - Each user carries a **`tenantId`** claim alongside their departments.
-- **Google Workspace path:** tenant is derived from the user's email domain (or a Workspace group convention, e.g. `org-acme@…`), resolved in `pre-token-generation` and emitted as a custom claim.
+- **Google Workspace path:** tenant is derived from the user's **email domain** (e.g. `alice@acme.com` → `acme`), resolved in `pre-token-generation` and emitted as a custom claim. A domain→tenant registry (SSM/DynamoDB) maps the domain to a canonical `tenantId`; unknown domains fail closed (no tenant claim issued).
 - **Native/dev path:** a `tenantId` Cognito group or custom attribute (the dev test user gets a fixed dev tenant).
 - Departments are emitted **tenant-namespaced** (`acme:dept-engineering`) plus the tenant's `org-wide` (`acme:org-wide`).
 
@@ -93,7 +93,9 @@ tenantId = :tenantId AND department IN (:departments)
 
 - `tenantId` is **non-negotiable** — derived from the verified JWT, never from user input, never omitted. This is the data-privacy isolation guarantee.
 - `department IN (...)` includes the user's departments **plus the tenant's `org-wide`**.
-- The filter is applied at the **vector-search level** (Bedrock Agent retrieval configuration / bedrock-namespace session attributes), not left to the model's discretion.
+- The filter is applied at the **vector-search level**, not left to the model's discretion.
+
+**Mechanism (enterprise choice):** the filter is enforced via the **`bedrock` namespace session attributes** on `InvokeAgent` — specifically `sessionState.sessionAttributes` → `bedrock` → `knowledgeBaseConfigurations` → `retrievalConfiguration` → `vectorSearchConfiguration` → `filter` (a `RetrievalFilter` with `andAll` of `FilterAttribute` for `tenantId` and `department`). This is the per-invocation, vector-level filter — deterministic and applied at search time, not a prompt hint. The alternative (a static `retrievalConfiguration` on the agent's KB association) is set at agent-creation time and cannot vary per user, so it is unsuitable for per-tenant scoping.
 
 > **Critical gap being fixed:** today the department filter is passed as a `promptSessionAttributes` string that the agent instruction never references — it is decorative, not enforced. This spec makes the filter a hard retrieval constraint.
 
@@ -154,17 +156,22 @@ The DynamoDB conversation table must partition/scope by `tenantId` (or at minimu
 5. Emit `tenantId` + tenant-namespaced departments + `org-wide` in `pre-token-generation`.
 6. Extract `tenantId` in `jwt-auth.ts`; update `common/auth.ts` helpers.
 7. Dev test user gets a fixed dev tenant.
+8. **Tenant registry (DynamoDB)** — domain→tenant mapping + tenant metadata; `pre-token-generation` resolves the email domain against it (fail closed on unknown domain).
+
+### Phase B2 — Self-service provisioning
+9. Provisioning endpoint/UI: sign-up → domain verification → tenant record created in the registry.
+10. Domain verification (DNS TXT or admin email confirmation) before the domain→tenant mapping is activated.
 
 ### Phase C — Ingestion & metadata
-8. `kb-sync-trigger` writes `{tenantId, department}` sidecar; derive both from key prefix.
-9. `upload-handler` builds `{tenantId}/{department}/…` keys and validates tenant match.
+11. `kb-sync-trigger` writes `{tenantId, department}` sidecar; derive both from key prefix.
+12. `upload-handler` builds `{tenantId}/{department}/…` keys and validates tenant match.
 
 ### Phase D — Citations & history
-10. `citations.ts` re-checks both dimensions.
-11. `conversation-store` + `conversation-history` scope by tenant.
+13. `citations.ts` re-checks both dimensions.
+14. `conversation-store` + `conversation-history` scope by tenant.
 
 ### Phase E — Verification
-12. End-to-end test: two tenants, cross-tenant query returns nothing; org-wide content visible to all users of a tenant; department content visible only to that department.
+15. End-to-end test: two tenants, cross-tenant query returns nothing; org-wide content visible to all users of a tenant; department content visible only to that department.
 
 ---
 
@@ -174,8 +181,14 @@ The shared-KB + mandatory-filter model is the default. If a tenant's data is sen
 
 ---
 
-## 9. Open Questions
+## 9. Resolved Decisions
 
-- **Tenant derivation for Google Workspace:** email domain vs. explicit Workspace group convention — needs a decision before Phase B.
-- **Tenant provisioning:** how tenants are created (ops action vs. self-service) — out of scope for now, but the `tenantId` claim source must be defined.
-- **Bedrock Agent retrieval filter mechanism:** confirm the exact API surface (retrieval configuration vs. bedrock-namespace session attributes) for the current Bedrock Agent version before Phase A implementation.
+- **Tenant derivation (Google Workspace):** **email domain** — `alice@acme.com` → tenant `acme`, via a domain→tenant registry. Unknown domains fail closed.
+- **Retrieval filter mechanism:** **`bedrock` namespace session attributes** (`knowledgeBaseConfigurations.retrievalConfiguration.vectorSearchConfiguration.filter`) — the per-invocation, vector-level filter. Chosen over the static agent-level `retrievalConfiguration` because tenant scoping must vary per user.
+- **Tenant provisioning:** **self-service** — tenants are created via a provisioning flow (sign-up → domain verification → tenant record in the registry), not an ops/back-office action. This implies a tenant registry (DynamoDB) and a provisioning endpoint/UI, which is added to the phased plan.
+
+## 10. Open Questions (remaining)
+
+- **Domain verification for self-service:** how a tenant proves ownership of its email domain (DNS TXT record vs. admin email confirmation) before the domain→tenant mapping is activated.
+- **Tenant registry schema:** exact shape of the domain→tenant mapping and tenant metadata (name, status, plan) — to be defined in Phase B.
+- **Bedrock Agent retrieval filter API surface:** confirm the exact `bedrock` namespace attribute shape against the current Bedrock Agent SDK version before Phase A implementation (the mechanism is decided; the wire format must be verified).
