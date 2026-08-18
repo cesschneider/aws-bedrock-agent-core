@@ -44,6 +44,7 @@ function validPayload(overrides: Record<string, unknown> = {}): Record<string, u
     exp: now + 3600,
     nbf: now - 10,
     "cognito:groups": ["dept-engineering"],
+    "custom:tenantId": "acme",
     ...overrides,
   };
 }
@@ -62,9 +63,20 @@ describe("authenticate", () => {
     const token = signToken(validPayload());
     const result = await authenticate(`Bearer ${token}`);
     expect(result.userId).toBe("user-123");
+    expect(result.tenantId).toBe("acme");
     expect(result.departments).toEqual(
       expect.arrayContaining(["dept-engineering", "company-wide"])
     );
+  });
+
+  it("rejects a token missing the tenant claim with 401 (fail closed)", async () => {
+    const token = signToken(validPayload({ "custom:tenantId": undefined }));
+    await expect(authenticate(`Bearer ${token}`)).rejects.toMatchObject({ statusCode: 401 });
+  });
+
+  it("rejects a token with an empty tenant claim with 401", async () => {
+    const token = signToken(validPayload({ "custom:tenantId": "" }));
+    await expect(authenticate(`Bearer ${token}`)).rejects.toMatchObject({ statusCode: 401 });
   });
 
   it("rejects a missing Authorization header with 401", async () => {

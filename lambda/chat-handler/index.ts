@@ -25,6 +25,7 @@ const s3 = new S3Client({});
 const tableName = process.env.CONVERSATION_TABLE_NAME ?? "";
 const agentId = process.env.AGENT_ID ?? "";
 const agentAliasId = process.env.AGENT_ALIAS_ID ?? "";
+const knowledgeBaseId = process.env.KNOWLEDGE_BASE_ID ?? "";
 
 // Initialize JWT validator at cold-start
 const region = process.env.AWS_REGION ?? "us-east-1";
@@ -77,8 +78,10 @@ export async function handler(
     for await (const chunk of invokeAgent({
       agentId,
       agentAliasId,
+      knowledgeBaseId,
       sessionId: sid,
       message,
+      tenantId: auth.tenantId,
       departments: auth.departments,
     })) {
       if (chunk.text) {

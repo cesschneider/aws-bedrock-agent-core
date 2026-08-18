@@ -44,7 +44,7 @@ async function* agentStream(
   for (const c of chunks) yield c;
 }
 
-const AUTH = { userId: "user-1", departments: ["dept-eng", "company-wide"] };
+const AUTH = { userId: "user-1", tenantId: "acme", departments: ["dept-eng", "company-wide"] };
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -89,11 +89,11 @@ describe("chat handler", () => {
     expect(body.answer).toContain("No relevant company documents were found");
   });
 
-  it("passes the user's departments to the agent invocation", async () => {
+  it("passes the user's tenant and departments to the agent invocation", async () => {
     mockInvokeAgent.mockReturnValue(agentStream([{ text: "ok" }]));
     await handler(makeEvent({ message: "hi" }));
     expect(mockInvokeAgent).toHaveBeenCalledWith(
-      expect.objectContaining({ departments: AUTH.departments })
+      expect.objectContaining({ tenantId: AUTH.tenantId, departments: AUTH.departments })
     );
   });
 

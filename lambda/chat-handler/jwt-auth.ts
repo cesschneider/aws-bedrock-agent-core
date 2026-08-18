@@ -23,6 +23,8 @@ const JWKS_TTL_MS = 60_000; // 1 minute TTL on JWKS cache
 export interface AuthResult {
   userId: string;
   departments: string[];
+  /** Tenant (organization) the user belongs to — derived from the verified JWT. */
+  tenantId: string;
 }
 
 export function init(region: string, userPoolId: string, clientId: string): void {
@@ -142,6 +144,16 @@ export async function authenticate(authHeader: string | undefined): Promise<Auth
       : [];
   const departments = Array.from(new Set([...groups, "company-wide"]));
 
-  return { userId: sub, departments };
+  // Extract the tenant claim (multi-tenant design §4.1). The tenant is
+  // emitted by pre-token-generation as a custom claim; it is mandatory for
+  // retrieval scoping and must never be derived from the request body.
+  const tenantId = payload["custom:tenantId"];
+  if (typeof tenantId !== "string" || tenantId.trim().length === 0) {
+    throw Object.assign(new Error("Token missing tenant claim (custom:tenantId)"), {
+      statusCode: 401,
+    });
+  }
+
+  return { userId: sub, departments, tenantId: tenantId.trim() };
 }
 

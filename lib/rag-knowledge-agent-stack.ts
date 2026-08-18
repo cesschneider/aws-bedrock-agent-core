@@ -122,6 +122,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
       cognitoClientId: this.identity.userPoolClient.userPoolClientId,
       agentId: this.ragAgent.agent.attrAgentId,
       agentAliasId: this.ragAgent.agentAlias.attrAgentAliasId,
+      knowledgeBaseId: this.knowledgeBase.knowledgeBase.attrKnowledgeBaseId,
     });
 
     this.uploadApi = new UploadApi(this, "UploadApi", {

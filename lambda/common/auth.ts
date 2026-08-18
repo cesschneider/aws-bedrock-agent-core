@@ -10,6 +10,23 @@
 export const COMPANY_WIDE = "company-wide";
 
 /**
+ * Per-tenant reserved scope (multi-tenant design §3). Replaces the single
+ * global `company-wide` — every user of a tenant can query that tenant's
+ * org-level content. Namespaced as `{tenantId}:org-wide`.
+ */
+export const ORG_WIDE = "org-wide";
+
+/** Returns the tenant-namespaced org-wide scope, e.g. `acme:org-wide`. */
+export function tenantOrgWide(tenantId: string): string {
+  return `${tenantId}:${ORG_WIDE}`;
+}
+
+/** Returns a tenant-namespaced department, e.g. `acme:dept-engineering`. */
+export function namespacedDepartment(tenantId: string, department: string): string {
+  return `${tenantId}:${department}`;
+}
+
+/**
  * The `cognito:groups` claim on an HTTP API JWT authorizer arrives as a
  * comma-separated string (API Gateway does not preserve JSON array shape
  * for custom/group claims), e.g. "dept-engineering,dept-finance".

@@ -26,6 +26,8 @@ export interface ChatHandlerProps {
   agentId?: string;
   /** Bedrock agent alias ID; placeholder until the RagAgent construct is active. */
   agentAliasId?: string;
+  /** Bedrock Knowledge Base ID — required for the retrieval metadata filter. */
+  knowledgeBaseId?: string;
 }
 
 /**
@@ -62,6 +64,7 @@ export class ChatHandler extends Construct {
         COGNITO_CLIENT_ID: props.cognitoClientId,
         AGENT_ID: props.agentId ?? "PENDING-AGENT-ID",
         AGENT_ALIAS_ID: props.agentAliasId ?? "PENDING-AGENT-ALIAS-ID",
+        KNOWLEDGE_BASE_ID: props.knowledgeBaseId ?? "PENDING-KNOWLEDGE-BASE-ID",
       },
       timeout: cdk.Duration.seconds(30),
       memorySize: 512,

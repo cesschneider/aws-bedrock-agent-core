@@ -95,7 +95,7 @@ tenantId = :tenantId AND department IN (:departments)
 - `department IN (...)` includes the user's departments **plus the tenant's `org-wide`**.
 - The filter is applied at the **vector-search level**, not left to the model's discretion.
 
-**Mechanism (enterprise choice):** the filter is enforced via the **`bedrock` namespace session attributes** on `InvokeAgent` — specifically `sessionState.sessionAttributes` → `bedrock` → `knowledgeBaseConfigurations` → `retrievalConfiguration` → `vectorSearchConfiguration` → `filter` (a `RetrievalFilter` with `andAll` of `FilterAttribute` for `tenantId` and `department`). This is the per-invocation, vector-level filter — deterministic and applied at search time, not a prompt hint. The alternative (a static `retrievalConfiguration` on the agent's KB association) is set at agent-creation time and cannot vary per user, so it is unsuitable for per-tenant scoping.
+**Mechanism (enterprise choice):** the filter is enforced via the **`sessionState.knowledgeBaseConfigurations`** field on `InvokeAgent` — a first-class `KnowledgeBaseConfiguration[]` where each entry carries `knowledgeBaseId` + `retrievalConfiguration.vectorSearchConfiguration.filter` (a `RetrievalFilter` with `andAll` of `FilterAttribute` for `tenantId` equals and `department` in-list). This is the per-invocation, vector-level filter — deterministic and applied at search time, not a prompt hint. The alternative (a static `retrievalConfiguration` on the agent's KB association) is set at agent-creation time and cannot vary per user, so it is unsuitable for per-tenant scoping.
 
 > **Critical gap being fixed:** today the department filter is passed as a `promptSessionAttributes` string that the agent instruction never references — it is decorative, not enforced. This spec makes the filter a hard retrieval constraint.
 
@@ -184,11 +184,11 @@ The shared-KB + mandatory-filter model is the default. If a tenant's data is sen
 ## 9. Resolved Decisions
 
 - **Tenant derivation (Google Workspace):** **email domain** — `alice@acme.com` → tenant `acme`, via a domain→tenant registry. Unknown domains fail closed.
-- **Retrieval filter mechanism:** **`bedrock` namespace session attributes** (`knowledgeBaseConfigurations.retrievalConfiguration.vectorSearchConfiguration.filter`) — the per-invocation, vector-level filter. Chosen over the static agent-level `retrievalConfiguration` because tenant scoping must vary per user.
+- **Retrieval filter mechanism:** **`sessionState.knowledgeBaseConfigurations`** (`retrievalConfiguration.vectorSearchConfiguration.filter`) — the per-invocation, vector-level filter. Chosen over the static agent-level `retrievalConfiguration` because tenant scoping must vary per user.
 - **Tenant provisioning:** **self-service** — tenants are created via a provisioning flow (sign-up → domain verification → tenant record in the registry), not an ops/back-office action. This implies a tenant registry (DynamoDB) and a provisioning endpoint/UI, which is added to the phased plan.
 
 ## 10. Open Questions (remaining)
 
 - **Domain verification for self-service:** **admin email confirmation** — the tenant's designated admin email (on the claimed domain) receives a verification link; the domain→tenant mapping is activated only after the admin confirms. (Chosen over DNS TXT because it requires no DNS access and is simpler for non-technical admins.)
 - **Tenant registry schema:** exact shape of the domain→tenant mapping and tenant metadata (name, status, plan) — to be defined in Phase B.
-- **Bedrock Agent retrieval filter API surface:** confirm the exact `bedrock` namespace attribute shape against the current Bedrock Agent SDK version before Phase A implementation (the mechanism is decided; the wire format must be verified).
+- **Bedrock Agent retrieval filter API surface:** **confirmed** — the current SDK (`@aws-sdk/client-bedrock-agent-runtime` v3.1090.0) exposes `SessionState.knowledgeBaseConfigurations: KnowledgeBaseConfiguration[]` with `retrievalConfiguration.vectorSearchConfiguration.filter: RetrievalFilter` (`andAll` of `FilterAttribute`). Implemented in STORY-A.

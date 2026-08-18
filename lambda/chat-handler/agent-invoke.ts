@@ -2,17 +2,22 @@ import {
   BedrockAgentRuntimeClient,
   InvokeAgentCommand,
   type InvokeAgentCommandInput,
+  type KnowledgeBaseConfiguration,
+  type RetrievalFilter,
 } from "@aws-sdk/client-bedrock-agent-runtime";
+import { tenantOrgWide } from "../common/auth";
 
 /**
- * Invokes the Bedrock Agent with department-scoped metadata
- * filtering (spec Section 4.4). The agent performs retrieve-and-generate
- * against the Knowledge Base, filtering chunks to the user's departments
- * plus the reserved "company-wide" department.
+ * Invokes the Bedrock Agent with a mandatory tenant + department metadata
+ * filter (multi-tenant design §4.3). The filter is applied at the
+ * vector-search level via `sessionState.knowledgeBaseConfigurations` — a
+ * hard retrieval constraint, not a prompt hint.
  *
- * Placeholder agent/alias IDs are wired as env vars at deploy time — the
- * actual IDs come from the Bedrock Knowledge Base construct (task #5),
- * currently blocked on the Phase 0 S3 Vectors spike.
+ * The filter is `andAll` of:
+ *   - `tenantId` equals the user's tenant (from the verified JWT)
+ *   - `department` in (user's departments + the tenant's org-wide scope)
+ *
+ * A missing/empty tenant fails closed — no Bedrock call is made.
  */
 
 let client: BedrockAgentRuntimeClient;
@@ -20,8 +25,10 @@ let client: BedrockAgentRuntimeClient;
 export interface AgentInvokeInput {
   agentId: string;
   agentAliasId: string;
+  knowledgeBaseId: string;
   sessionId: string;
   message: string;
+  tenantId: string;
   departments: string[];
 }
 
@@ -41,6 +48,57 @@ interface RetrievedReferenceLike {
   location?: { s3Location?: { uri?: string } };
 }
 
+/** Thrown when the tenant scope is missing/empty — fail closed, no retrieval. */
+export class TenantScopeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TenantScopeError";
+  }
+}
+
+/**
+ * Builds the mandatory retrieval filter. `tenantId` is non-negotiable; the
+ * department list always includes the tenant's org-wide scope.
+ */
+export function buildRetrievalFilter(
+  tenantId: string,
+  departments: string[]
+): RetrievalFilter {
+  if (!tenantId || tenantId.trim().length === 0) {
+    throw new TenantScopeError("tenantId is required for retrieval scoping");
+  }
+
+  const scopedDepartments = Array.from(
+    new Set([...departments, tenantOrgWide(tenantId)])
+  );
+  if (scopedDepartments.length === 0) {
+    throw new TenantScopeError("department scope is empty (fail closed)");
+  }
+
+  return {
+    andAll: [
+      { equals: { key: "tenantId", value: tenantId } },
+      { in: { key: "department", value: scopedDepartments } },
+    ],
+  };
+}
+
+/**
+ * Builds the `sessionState.knowledgeBaseConfigurations` entry carrying the
+ * retrieval filter for the given knowledge base.
+ */
+export function buildKnowledgeBaseConfiguration(
+  knowledgeBaseId: string,
+  filter: RetrievalFilter
+): KnowledgeBaseConfiguration {
+  return {
+    knowledgeBaseId,
+    retrievalConfiguration: {
+      vectorSearchConfiguration: { filter },
+    },
+  };
+}
+
 function resolveS3Uri(retrievedReference: RetrievedReferenceLike): string | undefined {
   // S3 location from Bedrock KB retrieval — the exact shape depends on the
   // vector store backend (S3 Vectors vs. OpenSearch). Normalize here.
@@ -54,17 +112,20 @@ export async function* invokeAgent(input: AgentInvokeInput): AsyncGenerator<Agen
     client = new BedrockAgentRuntimeClient({ region: process.env.AWS_REGION ?? "us-east-1" });
   }
 
+  // Build the mandatory filter BEFORE any Bedrock call — a missing tenant
+  // throws here and never reaches the network.
+  const filter = buildRetrievalFilter(input.tenantId, input.departments);
+  const knowledgeBaseConfigurations = [
+    buildKnowledgeBaseConfiguration(input.knowledgeBaseId, filter),
+  ];
+
   const commandInput: InvokeAgentCommandInput = {
     agentId: input.agentId,
     agentAliasId: input.agentAliasId,
     sessionId: input.sessionId,
     inputText: input.message,
-    // Department-scoped metadata filter: only retrieve chunks tagged for
-    // the user's departments (which always includes "company-wide").
     sessionState: {
-      promptSessionAttributes: {
-        departments: JSON.stringify(input.departments),
-      },
+      knowledgeBaseConfigurations,
     },
   };
 
@@ -99,4 +160,3 @@ export async function* invokeAgent(input: AgentInvokeInput): AsyncGenerator<Agen
     }
   }
 }
-
