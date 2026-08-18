@@ -26,6 +26,15 @@ export function namespacedDepartment(tenantId: string, department: string): stri
   return `${tenantId}:${department}`;
 }
 
+/** Extracts the email domain (lowercased), e.g. `alice@acme.com` → `acme`. */
+export function domainFromEmail(email: string): string {
+  const idx = email.lastIndexOf("@");
+  if (idx <= 0 || idx === email.length - 1) {
+    throw new Error(`Cannot derive domain from email "${email}"`);
+  }
+  return email.slice(idx + 1).toLowerCase();
+}
+
 /**
  * The `cognito:groups` claim on an HTTP API JWT authorizer arrives as a
  * comma-separated string (API Gateway does not preserve JSON array shape

@@ -1,5 +1,9 @@
 import type { PreTokenGenerationV2TriggerEvent } from "aws-lambda";
-import { COMPANY_WIDE } from "../common/auth";
+import {
+  domainFromEmail,
+  namespacedDepartment,
+  tenantOrgWide,
+} from "../common/auth";
 import type { GoogleAdminGroupsFetcher as GoogleAdminGroupsFetcherType } from "./google-admin-groups-fetcher";
 
 export interface GroupsFetcher {
@@ -8,30 +12,51 @@ export interface GroupsFetcher {
 }
 
 /**
+ * Resolves a user's tenant (organization) ID from their email. The default
+ * implementation derives the tenant from the email domain; STORY-B2 replaces
+ * it with a registry-backed resolver that maps domain → canonical tenantId
+ * and fails closed on unknown domains.
+ */
+export interface TenantResolver {
+  resolveTenantId(email: string): Promise<string>;
+}
+
+/** Fixed tenant for native (non-Google-federated) users, e.g. the dev CLI user. */
+export const DEV_TENANT = "dev";
+
+/**
+ * Default tenant resolver: the tenant IS the email domain (lowercased).
+ * `alice@acme.com` → `acme`. Replaced by the registry-backed resolver in
+ * STORY-B2, which adds the fail-closed-on-unknown-domain guarantee.
+ */
+export class DomainTenantResolver implements TenantResolver {
+  async resolveTenantId(email: string): Promise<string> {
+    return domainFromEmail(email);
+  }
+}
+
+/**
  * Maps Google Workspace group emails (e.g. "dept-engineering@company.com")
- * to department names (spec Section 4.1: "one Workspace group ↔ one
- * department"), always including the reserved company-wide department.
+ * to flat department names (spec Section 4.1: "one Workspace group ↔ one
+ * department"). The reserved org-wide scope is added later, per-tenant, in
+ * buildGroupOverride — not here.
  */
 export function mapWorkspaceGroupsToDepartments(workspaceGroupEmails: string[]): string[] {
   const departments = workspaceGroupEmails
     .map((email) => email.split("@")[0])
     .filter((localPart): localPart is string => Boolean(localPart) && localPart.length > 0);
-  return Array.from(new Set([...departments, COMPANY_WIDE]));
+  return Array.from(new Set(departments));
 }
 
 /**
  * Native (non-Google-federated) Cognito users have no Google Workspace
- * identity, so the Google Admin SDK fetcher cannot resolve their groups —
- * and until the Workspace service account is configured (see
- * docs/deployment-setup.md) that fetcher fails at runtime. For these users
- * (used by the dev CLI's USER_PASSWORD_AUTH login), department membership
- * comes from their native Cognito Group memberships instead, which Cognito
- * passes in via `groupConfiguration.groupsToOverride`. We pass those through
- * unchanged (plus the reserved company-wide department).
+ * identity, so the Google Admin SDK fetcher cannot resolve their groups.
+ * Their department membership comes from their native Cognito Group
+ * memberships, passed in via `groupConfiguration.groupsToOverride`.
  */
 export function nativeDepartments(event: PreTokenGenerationV2TriggerEvent): string[] {
   const nativeGroups = event.request.groupConfiguration?.groupsToOverride ?? [];
-  return Array.from(new Set([...nativeGroups, COMPANY_WIDE]));
+  return Array.from(new Set(nativeGroups));
 }
 
 /**
@@ -45,26 +70,49 @@ export function isGoogleFederatedUser(event: PreTokenGenerationV2TriggerEvent): 
   return typeof identities === "string" && identities.includes("Google");
 }
 
+/**
+ * Namespaces a set of flat department names under a tenant and adds the
+ * tenant's reserved org-wide scope. `["dept-eng"]` + tenant `acme` →
+ * `["acme:dept-eng", "acme:org-wide"]`.
+ */
+export function scopeDepartmentsToTenant(tenantId: string, departments: string[]): string[] {
+  const namespaced = departments.map((d) => namespacedDepartment(tenantId, d));
+  return Array.from(new Set([...namespaced, tenantOrgWide(tenantId)]));
+}
+
 export async function buildGroupOverride(
   event: PreTokenGenerationV2TriggerEvent,
-  groupsFetcher: GroupsFetcher
+  groupsFetcher: GroupsFetcher,
+  tenantResolver: TenantResolver
 ): Promise<PreTokenGenerationV2TriggerEvent> {
   const email = event.request.userAttributes.email;
   if (!email) {
     throw new Error("Pre-token-generation event is missing the user's email attribute");
   }
 
-  // Native users: skip the Google Admin SDK (which has no identity to look up
-  // and fails at runtime until the Workspace service account is configured).
-  // Use their native Cognito groups as the department claim instead.
-  const departments = isGoogleFederatedUser(event)
+  // Tenant: Google-federated users resolve via the tenant resolver (email
+  // domain); native users get the fixed dev tenant.
+  const tenantId = isGoogleFederatedUser(event)
+    ? await tenantResolver.resolveTenantId(email)
+    : DEV_TENANT;
+
+  // Departments: Google-federated users via the Admin SDK; native users via
+  // their native Cognito groups.
+  const flatDepartments = isGoogleFederatedUser(event)
     ? mapWorkspaceGroupsToDepartments(await groupsFetcher.fetchGroupsForUser(email))
     : nativeDepartments(event);
 
+  const scopedDepartments = scopeDepartmentsToTenant(tenantId, flatDepartments);
+
   event.response = {
     claimsAndScopeOverrideDetails: {
+      // Emit the tenant as a custom claim so downstream (jwt-auth) can scope
+      // retrieval. Custom claims must be prefixed with "custom:".
+      idTokenGeneration: {
+        claimsToAddOrOverride: { "custom:tenantId": tenantId },
+      },
       groupOverrideDetails: {
-        groupsToOverride: departments,
+        groupsToOverride: scopedDepartments,
       },
     },
   };
@@ -102,6 +150,6 @@ export const handler = async (
   const fetcher: GroupsFetcher = {
     fetchGroupsForUser: async (email) => (await getGoogleAdminGroupsFetcher()).fetchGroupsForUser(email),
   };
-  return buildGroupOverride(event, fetcher);
+  const tenantResolver: TenantResolver = new DomainTenantResolver();
+  return buildGroupOverride(event, fetcher, tenantResolver);
 };
-
