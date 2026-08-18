@@ -6,6 +6,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as cr from "aws-cdk-lib/custom-resources";
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as path from "path";
 
 export interface IdentityProps {
@@ -23,6 +24,8 @@ export interface IdentityProps {
   googleServiceAccountKeyParam: string;
   /** Email of a Google Workspace super admin the service account impersonates. */
   googleWorkspaceAdminEmail: string;
+  /** Tenant registry table — enables registry-backed tenant resolution. */
+  tenantRegistryTable?: dynamodb.Table;
   /**
    * Optional temporary password for a native (non-Google) dev test user,
    * resolved at synthesis time via ssm.StringParameter.valueFromLookup
@@ -70,6 +73,7 @@ export class Identity extends Construct {
       environment: {
         GOOGLE_SERVICE_ACCOUNT_KEY_PARAM: props.googleServiceAccountKeyParam,
         GOOGLE_WORKSPACE_ADMIN_EMAIL: props.googleWorkspaceAdminEmail,
+        TENANT_REGISTRY_TABLE_NAME: props.tenantRegistryTable?.tableName ?? "",
       },
       timeout: cdk.Duration.seconds(10),
       logGroup,
@@ -87,6 +91,9 @@ export class Identity extends Construct {
         ],
       })
     );
+
+    // Read access to the tenant registry for domain → tenant resolution.
+    props.tenantRegistryTable?.grantReadData(preTokenGeneration);
 
     this.userPool = new cognito.UserPool(this, "UserPool", {
       userPoolName: `rag-knowledge-agent-${props.envName}`,

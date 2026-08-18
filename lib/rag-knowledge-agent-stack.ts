@@ -10,6 +10,7 @@ import { KnowledgeBase } from "./constructs/knowledge-base";
 import { RagAgent } from "./constructs/agent";
 import { UploadApi } from "./constructs/upload-api";
 import { VectorIndex } from "./constructs/vector-index";
+import { TenantRegistry } from "./constructs/tenant-registry";
 
 export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
   /** Deployment environment slug: dev | stg | prd */
@@ -47,6 +48,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
   public readonly ragAgent: RagAgent;
   public readonly uploadApi: UploadApi;
   public readonly vectorIndex: VectorIndex;
+  public readonly tenantRegistry: TenantRegistry;
 
   constructor(scope: Construct, id: string, props: RagKnowledgeAgentStackProps) {
     super(scope, id, props);
@@ -90,6 +92,10 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
       envName: this.envName,
     });
 
+    this.tenantRegistry = new TenantRegistry(this, "TenantRegistry", {
+      envName: this.envName,
+    });
+
     // Google OAuth client ID/secret and the Workspace admin service account
     // key are created manually (Google Cloud Console / Workspace Admin
     // console — see docs/deployment-setup.md) and stored in SSM per
@@ -111,6 +117,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
       googleClientSecret,
       googleServiceAccountKeyParam: `/rag-knowledge-agent/${this.envName}/google-service-account-key`,
       googleWorkspaceAdminEmail: `admin@${this.envName}.pending-setup.invalid`,
+      tenantRegistryTable: this.tenantRegistry.table,
       devTestUserPassword: props.devTestUserPassword,
     });
 

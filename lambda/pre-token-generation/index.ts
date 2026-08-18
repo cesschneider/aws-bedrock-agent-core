@@ -4,6 +4,8 @@ import {
   namespacedDepartment,
   tenantOrgWide,
 } from "../common/auth";
+import { resolveTenantId as resolveTenantIdFromRegistry } from "../common/tenant-registry";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import type { GoogleAdminGroupsFetcher as GoogleAdminGroupsFetcherType } from "./google-admin-groups-fetcher";
 
 export interface GroupsFetcher {
@@ -26,12 +28,30 @@ export const DEV_TENANT = "dev";
 
 /**
  * Default tenant resolver: the tenant IS the email domain (lowercased).
- * `alice@acme.com` → `acme`. Replaced by the registry-backed resolver in
+ * `alice@acme.com` → `acme.com`. Replaced by the registry-backed resolver in
  * STORY-B2, which adds the fail-closed-on-unknown-domain guarantee.
  */
 export class DomainTenantResolver implements TenantResolver {
   async resolveTenantId(email: string): Promise<string> {
     return domainFromEmail(email);
+  }
+}
+
+/**
+ * Registry-backed tenant resolver (STORY-B2). Resolves the email domain
+ * against the tenant registry and fails closed on unknown/unactivated
+ * domains. This is the production resolver; `DomainTenantResolver` remains
+ * for tests and the pre-registry fallback.
+ */
+export class RegistryTenantResolver implements TenantResolver {
+  constructor(
+    private readonly dynamo: DynamoDBClient,
+    private readonly tableName: string
+  ) {}
+
+  async resolveTenantId(email: string): Promise<string> {
+    const domain = domainFromEmail(email);
+    return resolveTenantIdFromRegistry(this.dynamo, this.tableName, domain);
   }
 }
 
@@ -150,6 +170,13 @@ export const handler = async (
   const fetcher: GroupsFetcher = {
     fetchGroupsForUser: async (email) => (await getGoogleAdminGroupsFetcher()).fetchGroupsForUser(email),
   };
-  const tenantResolver: TenantResolver = new DomainTenantResolver();
+
+  // Use the registry-backed resolver when a tenant registry table is
+  // configured (STORY-B2); otherwise fall back to the domain resolver.
+  const registryTable = process.env.TENANT_REGISTRY_TABLE_NAME ?? "";
+  const tenantResolver: TenantResolver = registryTable
+    ? new RegistryTenantResolver(new DynamoDBClient({}), registryTable)
+    : new DomainTenantResolver();
+
   return buildGroupOverride(event, fetcher, tenantResolver);
 };
