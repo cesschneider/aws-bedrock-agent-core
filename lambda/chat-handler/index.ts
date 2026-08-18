@@ -7,7 +7,7 @@ import type {
 import { authenticate, init as initAuth } from "./jwt-auth";
 import { invokeAgent } from "./agent-invoke";
 import { presignCitation, type CitationLink } from "./citations";
-import { appendTurn } from "../common/conversation-store";
+import { appendTurn, conversationPartitionKey } from "../common/conversation-store";
 import { randomUUID } from "crypto";
 
 /**
@@ -62,8 +62,10 @@ export async function handler(
     // 3. Persist the user's message to DynamoDB BEFORE invoking the agent
     // (Eng review: write-before-stream — if the DB write fails, the user
     // sees an error instead of silently losing the turn).
+    // Partition key is `${tenantId}#${userId}` — tenant-scoped (§4.4).
+    const partitionKey = conversationPartitionKey(auth.tenantId, auth.userId);
     await appendTurn(dynamo, tableName, {
-      userId: auth.userId,
+      userId: partitionKey,
       turnId,
       role: "user",
       message,
@@ -99,6 +101,7 @@ export async function handler(
               process.env.DOCUMENTS_BUCKET_NAME ?? "",
               c.s3Uri,
               c.referenceId,
+              auth.tenantId,
               auth.departments
             );
             if (link) citations.push(link);
@@ -113,7 +116,7 @@ export async function handler(
 
     // 5. Persist the assistant's response
     await appendTurn(dynamo, tableName, {
-      userId: auth.userId,
+      userId: partitionKey,
       turnId: `${turnId.split("#")[0]}#${randomUUID().slice(0, 8)}`,
       role: "assistant",
       message: answer,

@@ -25,8 +25,11 @@ jest.mock("./citations", () => ({
 }));
 
 const mockAppendTurn = jest.fn();
+const mockConversationPartitionKey = jest.fn((tenantId: string, userId: string) => `${tenantId}#${userId}`);
 jest.mock("../common/conversation-store", () => ({
   appendTurn: (...args: unknown[]) => mockAppendTurn(...args),
+  conversationPartitionKey: (tenantId: unknown, userId: unknown) =>
+    mockConversationPartitionKey(tenantId as string, userId as string),
 }));
 
 import { handler } from "./index";
@@ -152,6 +155,14 @@ describe("chat handler", () => {
       expect.objectContaining({ sessionId: "session-42" })
     );
     expect(JSON.parse(res.body as string).sessionId).toBe("session-42");
+  });
+
+  it("uses a tenant-scoped partition key for conversation history", async () => {
+    mockInvokeAgent.mockReturnValue(agentStream([{ text: "ok" }]));
+    await handler(makeEvent({ message: "q" }));
+    // Both turns must use the composite key `${tenantId}#${userId}`.
+    const partitionKeys = mockAppendTurn.mock.calls.map((c) => c[2].userId);
+    expect(partitionKeys).toEqual(["acme#user-1", "acme#user-1"]);
   });
 });
 

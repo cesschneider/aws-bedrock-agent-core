@@ -21,12 +21,22 @@ const DEFAULT_TTL_DAYS = 180;
 export type ConversationRole = "user" | "assistant";
 
 export interface ConversationTurn {
-  userId: string;
+  /** Composite partition key: `${tenantId}#${userId}` (multi-tenant design §4.4). */
+  userId: string; // caller sets this to the composite key
   turnId: string; // sortable, e.g. `${ISO timestamp}#${uuid}`
   role: ConversationRole;
   message: string;
   citations?: string[];
   createdAt: string; // ISO 8601
+}
+
+/**
+ * Builds the composite partition key that isolates conversation history
+ * per tenant + user (multi-tenant design §4.4). A query with this key can
+ * never return turns from a different tenant.
+ */
+export function conversationPartitionKey(tenantId: string, userId: string): string {
+  return `${tenantId}#${userId}`;
 }
 
 export async function appendTurn(
