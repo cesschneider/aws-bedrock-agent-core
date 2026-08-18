@@ -160,7 +160,7 @@ The DynamoDB conversation table must partition/scope by `tenantId` (or at minimu
 
 ### Phase B2 — Self-service provisioning
 9. Provisioning endpoint/UI: sign-up → domain verification → tenant record created in the registry.
-10. Domain verification (DNS TXT or admin email confirmation) before the domain→tenant mapping is activated.
+10. Domain verification via **admin email confirmation** (verification link to the tenant's admin email on the claimed domain) before the domain→tenant mapping is activated.
 
 ### Phase C — Ingestion & metadata
 11. `kb-sync-trigger` writes `{tenantId, department}` sidecar; derive both from key prefix.
@@ -189,6 +189,6 @@ The shared-KB + mandatory-filter model is the default. If a tenant's data is sen
 
 ## 10. Open Questions (remaining)
 
-- **Domain verification for self-service:** how a tenant proves ownership of its email domain (DNS TXT record vs. admin email confirmation) before the domain→tenant mapping is activated.
+- **Domain verification for self-service:** **admin email confirmation** — the tenant's designated admin email (on the claimed domain) receives a verification link; the domain→tenant mapping is activated only after the admin confirms. (Chosen over DNS TXT because it requires no DNS access and is simpler for non-technical admins.)
 - **Tenant registry schema:** exact shape of the domain→tenant mapping and tenant metadata (name, status, plan) — to be defined in Phase B.
 - **Bedrock Agent retrieval filter API surface:** confirm the exact `bedrock` namespace attribute shape against the current Bedrock Agent SDK version before Phase A implementation (the mechanism is decided; the wire format must be verified).
