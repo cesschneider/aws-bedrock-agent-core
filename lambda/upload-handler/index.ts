@@ -5,7 +5,7 @@ import type {
 } from "aws-lambda";
 import { S3Client } from "@aws-sdk/client-s3";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
-import { COMPANY_WIDE, parseDepartmentClaims, userCanAccessDepartment } from "../common/auth";
+import { ORG_WIDE, namespacedDepartment, parseDepartmentClaims, tenantOrgWide, userCanAccessDepartment } from "../common/auth";
 
 /** Bedrock KB default-supported office document types (spec Section 2, Goals). */
 const ALLOWED_CONTENT_TYPES = new Set([
@@ -96,10 +96,21 @@ export async function handleUploadRequest(
     };
   }
 
+  // Every user can upload to their tenant's org-wide scope.
+  const effectiveDepartments = Array.from(
+    new Set([...userDepartments, tenantOrgWide(tenantId.trim())])
+  );
+
   // Server-side enforcement — a user cannot upload into a department they
-  // don't belong to, except company-wide, which anyone may upload to
-  // (spec Section 4.2 / Section 6, Security Considerations).
-  if (body.department !== COMPANY_WIDE && !userCanAccessDepartment(userDepartments, body.department)) {
+  // don't belong to, except org-wide, which anyone in the tenant may upload
+  // to (spec Section 4.2 / Section 6, Security Considerations).
+  // The body carries the human-facing department name; the user's claims are
+  // tenant-namespaced, so namespace the target before the access check.
+  const targetDepartment =
+    body.department === ORG_WIDE
+      ? namespacedDepartment(tenantId.trim(), ORG_WIDE)
+      : namespacedDepartment(tenantId.trim(), body.department);
+  if (!userCanAccessDepartment(effectiveDepartments, targetDepartment)) {
     return {
       statusCode: 403,
       body: JSON.stringify({ error: `Not a member of department "${body.department}"` }),

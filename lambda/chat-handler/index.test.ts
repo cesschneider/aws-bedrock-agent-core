@@ -47,7 +47,7 @@ async function* agentStream(
   for (const c of chunks) yield c;
 }
 
-const AUTH = { userId: "user-1", tenantId: "acme", departments: ["dept-eng", "company-wide"] };
+const AUTH = { userId: "user-1", tenantId: "acme", departments: ["acme:dept-eng", "acme:org-wide"] };
 
 beforeEach(() => {
   jest.clearAllMocks();

@@ -1,6 +1,6 @@
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { userCanAccessDepartment } from "../common/auth";
+import { namespacedDepartment, userCanAccessDepartment } from "../common/auth";
 
 /**
  * Citation download links (spec Section 4.4 + multi-tenant design §4.4):
@@ -44,7 +44,11 @@ export async function presignCitation(
 ): Promise<CitationLink | null> {
   const key = s3UriToKey(s3Uri);
   const citationTenant = tenantFromKey(key);
-  const department = departmentFromKey(key);
+  const plainDepartment = departmentFromKey(key);
+  // The S3 key carries the human-facing department name; the user's claims
+  // are tenant-namespaced. Namespace the citation's department before the
+  // access check so `acme-com:engineering` matches `acme-com:engineering`.
+  const department = namespacedDepartment(citationTenant, plainDepartment);
 
   // Tenant re-check (multi-tenant design §4.4): a citation from a
   // different tenant must NEVER produce a presigned URL, regardless of

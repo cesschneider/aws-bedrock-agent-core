@@ -61,7 +61,7 @@ describe("handleUploadRequest", () => {
 
   it("returns a presigned POST for a valid upload to the caller's own department", async () => {
     const event = makeEvent({
-      groups: "dept-engineering",
+      groups: "acme-com:dept-engineering",
       body: JSON.stringify({
         department: "dept-engineering",
         filename: "report.pdf",
@@ -85,11 +85,11 @@ describe("handleUploadRequest", () => {
     );
   });
 
-  it("allows upload to company-wide regardless of department membership", async () => {
+  it("allows upload to org-wide regardless of department membership", async () => {
     const event = makeEvent({
-      groups: "dept-finance",
+      groups: "acme-com:dept-finance",
       body: JSON.stringify({
-        department: "company-wide",
+        department: "org-wide",
         filename: "handbook.pdf",
         contentType: "application/pdf",
       }),
@@ -101,7 +101,7 @@ describe("handleUploadRequest", () => {
 
   it("rejects upload to a department the caller does not belong to", async () => {
     const event = makeEvent({
-      groups: "dept-finance",
+      groups: "acme-com:dept-finance",
       body: JSON.stringify({
         department: "dept-hr",
         filename: "comp.pdf",
@@ -115,20 +115,20 @@ describe("handleUploadRequest", () => {
   });
 
   it("rejects a missing request body", async () => {
-    const event = makeEvent({ groups: "dept-engineering", body: undefined });
+    const event = makeEvent({ groups: "acme-com:dept-engineering", body: undefined });
     const result = await handleUploadRequest(event, s3Client, bucket);
     expect(result.statusCode).toBe(400);
   });
 
   it("rejects malformed JSON in the request body", async () => {
-    const event = makeEvent({ groups: "dept-engineering", body: "{not json" });
+    const event = makeEvent({ groups: "acme-com:dept-engineering", body: "{not json" });
     const result = await handleUploadRequest(event, s3Client, bucket);
     expect(result.statusCode).toBe(400);
   });
 
   it("rejects a disallowed content type", async () => {
     const event = makeEvent({
-      groups: "dept-engineering",
+      groups: "acme-com:dept-engineering",
       body: JSON.stringify({
         department: "dept-engineering",
         filename: "malware.exe",
@@ -141,18 +141,18 @@ describe("handleUploadRequest", () => {
 
   it("rejects a request missing the department field", async () => {
     const event = makeEvent({
-      groups: "dept-engineering",
+      groups: "acme-com:dept-engineering",
       body: JSON.stringify({ filename: "report.pdf", contentType: "application/pdf" }),
     });
     const result = await handleUploadRequest(event, s3Client, bucket);
     expect(result.statusCode).toBe(400);
   });
 
-  it("allows a user with zero department groups to upload only to company-wide", async () => {
+  it("allows a user with zero department groups to upload to org-wide", async () => {
     const event = makeEvent({
       groups: "",
       body: JSON.stringify({
-        department: "company-wide",
+        department: "org-wide",
         filename: "notice.pdf",
         contentType: "application/pdf",
       }),
@@ -163,7 +163,7 @@ describe("handleUploadRequest", () => {
 
   it("rejects a request when the tenant claim is missing (401)", async () => {
     const event = makeEvent({
-      groups: "dept-engineering",
+      groups: "acme-com:dept-engineering",
       tenantId: "",
       body: JSON.stringify({
         department: "dept-engineering",

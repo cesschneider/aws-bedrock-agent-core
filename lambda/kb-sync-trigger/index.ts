@@ -6,6 +6,7 @@ import {
   ConditionalCheckFailedException,
 } from "@aws-sdk/client-dynamodb";
 import { BedrockAgentClient, StartIngestionJobCommand } from "@aws-sdk/client-bedrock-agent";
+import { namespacedDepartment } from "../common/auth";
 
 /** Skip re-ingesting metadata sidecars we just wrote ourselves (would otherwise loop). */
 const METADATA_SUFFIX = ".metadata.json";
@@ -90,11 +91,16 @@ async function writeMetadataSidecar(
   tenantId: string,
   department: string
 ): Promise<void> {
+  // The S3 key carries the human-facing department name (e.g. `engineering`),
+  // but the metadata sidecar must store the tenant-NAMESPACED form
+  // (`acme-com:engineering`) so it matches the retrieval filter's
+  // `department IN (...)` clause (multi-tenant design §3, §4.2).
+  const namespaced = namespacedDepartment(tenantId, department);
   await s3.send(
     new PutObjectCommand({
       Bucket: bucket,
       Key: `${objectKey}${METADATA_SUFFIX}`,
-      Body: JSON.stringify({ metadataAttributes: { tenantId, department } }),
+      Body: JSON.stringify({ metadataAttributes: { tenantId, department: namespaced } }),
       ContentType: "application/json",
     })
   );

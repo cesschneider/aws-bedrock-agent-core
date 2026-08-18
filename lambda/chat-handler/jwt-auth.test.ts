@@ -43,7 +43,7 @@ function validPayload(overrides: Record<string, unknown> = {}): Record<string, u
     sub: "user-123",
     exp: now + 3600,
     nbf: now - 10,
-    "cognito:groups": ["dept-engineering"],
+    "cognito:groups": ["acme:dept-engineering"],
     "custom:tenantId": "acme",
     ...overrides,
   };
@@ -59,13 +59,13 @@ beforeAll(() => {
 });
 
 describe("authenticate", () => {
-  it("accepts a valid token and returns userId + departments incl. company-wide", async () => {
+  it("accepts a valid token and returns userId + departments incl. org-wide", async () => {
     const token = signToken(validPayload());
     const result = await authenticate(`Bearer ${token}`);
     expect(result.userId).toBe("user-123");
     expect(result.tenantId).toBe("acme");
     expect(result.departments).toEqual(
-      expect.arrayContaining(["dept-engineering", "company-wide"])
+      expect.arrayContaining(["acme:dept-engineering", "acme:org-wide"])
     );
   });
 
@@ -130,17 +130,17 @@ describe("authenticate", () => {
   });
 
   it("handles cognito:groups as a comma-separated string", async () => {
-    const token = signToken(validPayload({ "cognito:groups": "dept-a, dept-b" }));
+    const token = signToken(validPayload({ "cognito:groups": "acme:dept-a, acme:dept-b" }));
     const result = await authenticate(`Bearer ${token}`);
     expect(result.departments).toEqual(
-      expect.arrayContaining(["dept-a", "dept-b", "company-wide"])
+      expect.arrayContaining(["acme:dept-a", "acme:dept-b", "acme:org-wide"])
     );
   });
 
-  it("grants only company-wide when the token has no groups claim", async () => {
+  it("grants only org-wide when the token has no groups claim", async () => {
     const token = signToken(validPayload({ "cognito:groups": undefined }));
     const result = await authenticate(`Bearer ${token}`);
-    expect(result.departments).toEqual(["company-wide"]);
+    expect(result.departments).toEqual(["acme:org-wide"]);
   });
 });
 

@@ -1,4 +1,5 @@
 import * as crypto from "crypto";
+import { tenantOrgWide } from "../common/auth";
 
 /**
  * JWT authentication for the chat-handler's Lambda Function URL
@@ -134,7 +135,8 @@ export async function authenticate(authHeader: string | undefined): Promise<Auth
     throw Object.assign(new Error("Invalid token signature"), { statusCode: 401 });
   }
 
-  // Extract department claims (cognito:groups)
+  // Extract department claims (cognito:groups). These are already
+  // tenant-namespaced by pre-token-generation (e.g. `acme-com:engineering`).
   const sub = payload.sub ?? payload.username ?? "unknown";
   const rawGroups = payload["cognito:groups"];
   const groups: string[] = Array.isArray(rawGroups)
@@ -142,7 +144,6 @@ export async function authenticate(authHeader: string | undefined): Promise<Auth
     : typeof rawGroups === "string"
       ? rawGroups.split(",").map((g: string) => g.trim())
       : [];
-  const departments = Array.from(new Set([...groups, "company-wide"]));
 
   // Extract the tenant claim (multi-tenant design §4.1). The tenant is
   // emitted by pre-token-generation as a custom claim; it is mandatory for
@@ -153,6 +154,10 @@ export async function authenticate(authHeader: string | undefined): Promise<Auth
       statusCode: 401,
     });
   }
+
+  // Every user gets their tenant's org-wide scope (replaces the old global
+  // `company-wide`). Namespaced as `{tenantId}:org-wide`.
+  const departments = Array.from(new Set([...groups, tenantOrgWide(tenantId.trim())]));
 
   return { userId: sub, departments, tenantId: tenantId.trim() };
 }

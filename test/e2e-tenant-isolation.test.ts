@@ -57,13 +57,13 @@ async function* agentStream(
 const ACME_USER = {
   userId: "alice@acme.com",
   tenantId: "acme-com",
-  departments: ["dept-engineering", "acme-com:org-wide"],
+  departments: ["acme-com:dept-engineering", "acme-com:org-wide"],
 };
 
 const GLOBEX_USER = {
   userId: "bob@globex.com",
   tenantId: "globex-com",
-  departments: ["dept-sales", "globex-com:org-wide"],
+  departments: ["globex-com:dept-sales", "globex-com:org-wide"],
 };
 
 beforeEach(() => {
@@ -81,14 +81,14 @@ beforeEach(() => {
 
 describe("STORY-E: cross-tenant isolation", () => {
   it("TC-E.1: retrieval filter excludes documents from other tenants", () => {
-    const filter = buildRetrievalFilter("acme-com", ["dept-engineering", "acme-com:org-wide"]);
+    const filter = buildRetrievalFilter("acme-com", ["acme-com:dept-engineering", "acme-com:org-wide"]);
     expect(filter).toEqual({
       andAll: [
         { equals: { key: "tenantId", value: "acme-com" } },
         {
           in: {
             key: "department",
-            value: ["dept-engineering", "acme-com:org-wide"],
+            value: ["acme-com:dept-engineering", "acme-com:org-wide"],
           },
         },
       ],
@@ -160,7 +160,7 @@ describe("STORY-E: org-wide visibility within tenant", () => {
           citations: [
             {
               referenceId: "ref-handbook",
-              s3Uri: "s3://bucket/acme-com/company-wide/handbook.pdf",
+              s3Uri: "s3://bucket/acme-com/org-wide/handbook.pdf",
             },
           ],
         },
@@ -172,7 +172,7 @@ describe("STORY-E: org-wide visibility within tenant", () => {
     )) as APIGatewayProxyStructuredResultV2;
 
     const body = JSON.parse(res.body as string);
-    // company-wide is in the user's department list → citation passes.
+    // org-wide is in the user's department list → citation passes.
     expect(body.citations).toHaveLength(1);
   });
 });

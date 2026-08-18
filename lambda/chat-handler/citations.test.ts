@@ -36,7 +36,7 @@ describe("tenantFromKey", () => {
 });
 
 describe("departmentFromKey", () => {
-  it("returns the second path segment", () => {
+  it("returns the second path segment (plain, human-facing name)", () => {
     expect(departmentFromKey("acme-com/dept-finance/uuid-report.docx")).toBe("dept-finance");
   });
 
@@ -55,7 +55,7 @@ describe("presignCitation", () => {
       "s3://bucket/acme-com/dept-eng/uuid-doc.pdf",
       "ref-1",
       TENANT,
-      ["dept-eng", "company-wide"]
+      ["acme-com:dept-eng", "acme-com:org-wide"]
     );
     expect(link).toEqual({
       referenceId: "ref-1",
@@ -71,7 +71,7 @@ describe("presignCitation", () => {
       "s3://bucket/acme-com/dept-finance/uuid-doc.pdf",
       "ref-2",
       TENANT,
-      ["dept-eng", "company-wide"]
+      ["acme-com:dept-eng", "acme-com:org-wide"]
     );
     expect(link).toBeNull();
     expect(getSignedUrl).not.toHaveBeenCalled();
@@ -84,7 +84,7 @@ describe("presignCitation", () => {
       "s3://bucket/other-com/dept-eng/uuid-doc.pdf",
       "ref-3",
       TENANT,
-      ["dept-eng", "company-wide"]
+      ["acme-com:dept-eng", "acme-com:org-wide"]
     );
     expect(link).toBeNull();
     expect(getSignedUrl).not.toHaveBeenCalled();
@@ -97,19 +97,19 @@ describe("presignCitation", () => {
       "s3://bucket/acme-com/dept-eng/uuid-doc.pdf",
       "ref-4",
       "",
-      ["dept-eng"]
+      ["acme-com:dept-eng"]
     );
     expect(link).toBeNull();
   });
 
-  it("always allows company-wide documents within the same tenant", async () => {
+  it("always allows org-wide documents within the same tenant", async () => {
     const link = await presignCitation(
       s3,
       BUCKET,
-      "s3://bucket/acme-com/company-wide/uuid-handbook.pdf",
+      "s3://bucket/acme-com/org-wide/uuid-handbook.pdf",
       "ref-5",
       TENANT,
-      ["company-wide"]
+      ["acme-com:org-wide"]
     );
     expect(link).not.toBeNull();
   });

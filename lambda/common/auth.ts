@@ -38,18 +38,19 @@ export function domainFromEmail(email: string): string {
 /**
  * The `cognito:groups` claim on an HTTP API JWT authorizer arrives as a
  * comma-separated string (API Gateway does not preserve JSON array shape
- * for custom/group claims), e.g. "dept-engineering,dept-finance".
+ * for custom/group claims), e.g. "acme-com:engineering,acme-com:finance".
+ *
+ * In the multi-tenant model these groups are ALREADY tenant-namespaced by
+ * pre-token-generation. This helper only parses them — it does NOT inject
+ * the org-wide scope (that requires tenant context and is done by the
+ * caller via `tenantOrgWide`).
  */
 export function parseDepartmentClaims(claims: Record<string, string> | undefined): string[] {
   const raw = claims?.["cognito:groups"] ?? "";
-  const groups = raw
+  return raw
     .split(",")
     .map((g) => g.trim())
     .filter((g) => g.length > 0);
-
-  // Every authenticated user gets company-wide access regardless of group
-  // membership — never duplicate it if a group happens to be named that.
-  return Array.from(new Set([...groups, COMPANY_WIDE]));
 }
 
 export function userCanAccessDepartment(userDepartments: string[], targetDepartment: string): boolean {

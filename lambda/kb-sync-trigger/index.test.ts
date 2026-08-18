@@ -44,8 +44,8 @@ describe("departmentFromKey", () => {
     expect(departmentFromKey("acme-com/dept-engineering/uuid-report.pdf")).toBe("dept-engineering");
   });
 
-  it("extracts company-wide as a department value", () => {
-    expect(departmentFromKey("acme-com/company-wide/uuid-handbook.pdf")).toBe("company-wide");
+  it("extracts org-wide as a department value", () => {
+    expect(departmentFromKey("acme-com/org-wide/uuid-handbook.pdf")).toBe("org-wide");
   });
 
   it("throws when the key has no department segment", () => {
@@ -108,7 +108,7 @@ describe("handleS3Event", () => {
     const putCall = (deps.s3.send as jest.Mock).mock.calls[0][0] as PutObjectCommand;
     expect(putCall.input.Key).toBe("acme-com/dept-engineering/uuid-report.pdf.metadata.json");
     expect(JSON.parse(putCall.input.Body as string)).toEqual({
-      metadataAttributes: { tenantId: "acme-com", department: "dept-engineering" },
+      metadataAttributes: { tenantId: "acme-com", department: "acme-com:dept-engineering" },
     });
     expect(deps.bedrockAgent.send).toHaveBeenCalledWith(expect.any(StartIngestionJobCommand));
   });
