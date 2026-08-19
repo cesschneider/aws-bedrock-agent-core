@@ -110,8 +110,11 @@ export async function createTenant(
         verificationToken: { S: record.verificationToken ?? "" },
         createdAt: { S: record.createdAt },
       },
-      // Fail on duplicate domain (409 semantics at the API layer).
-      ConditionExpression: "attribute_not_exists(domain)",
+      // Fail on duplicate domain (409 semantics at the API layer). `domain`
+      // is a DynamoDB reserved keyword, so it must be referenced via an
+      // expression attribute name.
+      ConditionExpression: "attribute_not_exists(#domain)",
+      ExpressionAttributeNames: { "#domain": "domain" },
     })
   );
 
