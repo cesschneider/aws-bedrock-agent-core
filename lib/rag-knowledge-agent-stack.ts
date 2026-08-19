@@ -11,6 +11,7 @@ import { RagAgent } from "./constructs/agent";
 import { UploadApi } from "./constructs/upload-api";
 import { VectorIndex } from "./constructs/vector-index";
 import { TenantRegistry } from "./constructs/tenant-registry";
+import { TenantProvisioningApi } from "./constructs/tenant-provisioning-api";
 
 export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
   /** Deployment environment slug: dev | stg | prd */
@@ -49,6 +50,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
   public readonly uploadApi: UploadApi;
   public readonly vectorIndex: VectorIndex;
   public readonly tenantRegistry: TenantRegistry;
+  public readonly tenantProvisioningApi: TenantProvisioningApi;
 
   constructor(scope: Construct, id: string, props: RagKnowledgeAgentStackProps) {
     super(scope, id, props);
@@ -94,6 +96,13 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
 
     this.tenantRegistry = new TenantRegistry(this, "TenantRegistry", {
       envName: this.envName,
+    });
+
+    // Self-service provisioning (STORY-B2): public HTTP API for sign-up and
+    // admin-email confirmation, writing to the tenant registry.
+    this.tenantProvisioningApi = new TenantProvisioningApi(this, "TenantProvisioningApi", {
+      envName: this.envName,
+      tenantRegistryTable: this.tenantRegistry.table,
     });
 
     // Google OAuth client ID/secret and the Workspace admin service account

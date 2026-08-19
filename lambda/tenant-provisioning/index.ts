@@ -1,6 +1,7 @@
 import { randomBytes } from "crypto";
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import {
   activateTenant,
   createTenant,
@@ -23,6 +24,12 @@ import { domainFromEmail } from "../common/auth";
 
 const dynamo = new DynamoDBClient({});
 const tableName = process.env.TENANT_REGISTRY_TABLE_NAME ?? "";
+
+// SES is optional: when FROM_EMAIL is configured the verification link is
+// emailed; otherwise the sender logs the link (dev fallback) so the flow
+// still works end-to-end for testing.
+const ses = new SESClient({});
+const fromEmail = process.env.FROM_EMAIL ?? "";
 
 interface SignupBody {
   name: string;
@@ -56,7 +63,8 @@ export type EmailSender = (to: string, subject: string, body: string) => Promise
 
 export async function handleSignup(
   event: APIGatewayProxyEventV2,
-  sendEmail: EmailSender
+  sendEmail: EmailSender,
+  baseUrl?: string
 ): Promise<APIGatewayProxyStructuredResultV2> {
   try {
     const { name, adminEmail, domain } = parseBody<SignupBody>(event.body);
@@ -85,7 +93,7 @@ export async function handleSignup(
       verificationToken: token,
     });
 
-    const confirmUrl = `${process.env.CONFIRM_BASE_URL ?? ""}/confirm?domain=${encodeURIComponent(
+    const confirmUrl = `${baseUrl ?? process.env.CONFIRM_BASE_URL ?? ""}/confirm?domain=${encodeURIComponent(
       record.domain
     )}&token=${token}`;
     await sendEmail(
@@ -133,12 +141,28 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
 
   const route = event.rawPath ?? event.requestContext?.http?.path ?? "";
   if (route.endsWith("/signup")) {
-    // Placeholder email sender — the CDK construct injects a real SES sender
-    // via a Lambda layer or environment; for now, log instead of send.
-    const noopSender: EmailSender = async (to, subject) => {
-      console.log(`[provisioning] would email ${to}: ${subject}`);
-    };
-    return handleSignup(event, noopSender);
+    // Derive the confirm base URL from the request itself (the API's own
+    // domain) so the Lambda doesn't need its own endpoint injected — avoids a
+    // CloudFormation circular dependency between the Lambda and its HTTP API.
+    const domainName = event.requestContext?.domainName;
+    const baseUrl = domainName ? `https://${domainName}` : undefined;
+    const sender: EmailSender = fromEmail
+      ? async (to, subject, body) => {
+          await ses.send(
+            new SendEmailCommand({
+              Source: fromEmail,
+              Destination: { ToAddresses: [to] },
+              Message: {
+                Subject: { Data: subject },
+                Body: { Text: { Data: body } },
+              },
+            })
+          );
+        }
+      : async (to, subject, body) => {
+          console.log(`[provisioning] SES not configured — would email ${to}: ${subject}\n${body}`);
+        };
+    return handleSignup(event, sender, baseUrl);
   }
   if (route.endsWith("/confirm")) {
     return handleConfirm(event);
