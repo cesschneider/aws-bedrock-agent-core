@@ -1,6 +1,9 @@
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import * as ssm from "aws-cdk-lib/aws-ssm";
+import * as lambdaNode from "aws-cdk-lib/aws-lambda-nodejs";
+import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as path from "path";
 import { UploadPipeline } from "./constructs/upload-pipeline";
 import { KbSync } from "./constructs/kb-sync";
 import { ConversationHistory } from "./constructs/conversation-history";
@@ -12,6 +15,8 @@ import { UploadApi } from "./constructs/upload-api";
 import { VectorIndex } from "./constructs/vector-index";
 import { TenantRegistry } from "./constructs/tenant-registry";
 import { TenantProvisioningApi } from "./constructs/tenant-provisioning-api";
+import { DocumentRegistry } from "./constructs/document-registry";
+import { DocumentsApi } from "./constructs/documents-api";
 
 export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
   /** Deployment environment slug: dev | stg | prd */
@@ -51,6 +56,8 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
   public readonly vectorIndex: VectorIndex;
   public readonly tenantRegistry: TenantRegistry;
   public readonly tenantProvisioningApi: TenantProvisioningApi;
+  public readonly documentRegistry: DocumentRegistry;
+  public readonly documentsApi: DocumentsApi;
 
   constructor(scope: Construct, id: string, props: RagKnowledgeAgentStackProps) {
     super(scope, id, props);
@@ -59,8 +66,16 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
     cdk.Tags.of(this).add("project", "rag-knowledge-agent");
     cdk.Tags.of(this).add("environment", this.envName);
 
+    // Document registry — source of truth for the list/get/delete API. Must
+    // exist before the upload pipeline (which writes PENDING records) and the
+    // kb-sync trigger (which updates them to INDEXED).
+    this.documentRegistry = new DocumentRegistry(this, "DocumentRegistry", {
+      envName: this.envName,
+    });
+
     this.uploadPipeline = new UploadPipeline(this, "UploadPipeline", {
       envName: this.envName,
+      registryTable: this.documentRegistry.table,
     });
 
     // S3 Vectors bucket + index are IaC-managed like everything else
@@ -88,6 +103,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
       sourceBucket: this.uploadPipeline.bucket,
       knowledgeBaseId: this.knowledgeBase.knowledgeBase.attrKnowledgeBaseId,
       dataSourceId: this.knowledgeBase.dataSource.attrDataSourceId,
+      registryTable: this.documentRegistry.table,
     });
 
     this.conversationHistory = new ConversationHistory(this, "ConversationHistory", {
@@ -146,6 +162,29 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
       uploadHandler: this.uploadPipeline.uploadHandler,
       userPool: this.identity.userPool,
       userPoolClient: this.identity.userPoolClient,
+    });
+
+    // Document list/get/delete API (multi-tenant design §4.2 extension).
+    const documentsHandler = new lambdaNode.NodejsFunction(this, "DocumentsHandler", {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      entry: path.join(__dirname, "../lambda/documents-handler/index.ts"),
+      handler: "handler",
+      environment: {
+        DOCUMENT_REGISTRY_TABLE_NAME: this.documentRegistry.table.tableName,
+        DOCUMENTS_BUCKET_NAME: this.uploadPipeline.bucket.bucketName,
+      },
+      timeout: cdk.Duration.seconds(10),
+    });
+    this.documentRegistry.table.grantReadWriteData(documentsHandler);
+    this.uploadPipeline.bucket.grantDelete(documentsHandler);
+
+    this.documentsApi = new DocumentsApi(this, "DocumentsApi", {
+      envName: this.envName,
+      documentsHandler,
+      userPool: this.identity.userPool,
+      userPoolClient: this.identity.userPoolClient,
+      documentsBucket: this.uploadPipeline.bucket,
+      registryTable: this.documentRegistry.table,
     });
 
     // Surface the values the chat CLI and the upload guide need, so they can
