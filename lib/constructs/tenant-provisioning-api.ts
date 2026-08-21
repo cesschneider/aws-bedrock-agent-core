@@ -17,6 +17,8 @@ export interface TenantProvisioningApiProps {
   envName: string;
   /** Tenant registry table the provisioning Lambda writes to. */
   tenantRegistryTable: dynamodb.Table;
+  /** Tenant membership table — the provisioning admin's membership is created here on activation. */
+  tenantMembershipTable?: dynamodb.Table;
   /**
    * Optional verified SES sender email. When set, the Lambda emails the
    * verification link via SES and is granted ses:SendEmail. When omitted
@@ -50,6 +52,7 @@ export class TenantProvisioningApi extends Construct {
       handler: "handler",
       environment: {
         TENANT_REGISTRY_TABLE_NAME: props.tenantRegistryTable.tableName,
+        TENANT_MEMBERSHIP_TABLE_NAME: props.tenantMembershipTable?.tableName ?? "",
         ...(props.fromEmail ? { FROM_EMAIL: props.fromEmail } : {}),
       },
       timeout: cdk.Duration.seconds(10),
@@ -58,6 +61,8 @@ export class TenantProvisioningApi extends Construct {
 
     // Write access to the tenant registry (create PENDING, activate).
     props.tenantRegistryTable.grantReadWriteData(this.fn);
+    // Write access to the membership table (create the admin membership).
+    props.tenantMembershipTable?.grantWriteData(this.fn);
 
     // SES send permission only when a sender is configured.
     if (props.fromEmail) {

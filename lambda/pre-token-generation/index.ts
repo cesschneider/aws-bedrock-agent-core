@@ -5,6 +5,7 @@ import {
   tenantOrgWide,
 } from "../common/auth";
 import { resolveTenantId as resolveTenantIdFromRegistry } from "../common/tenant-registry";
+import { resolveTenantFromMembership } from "../common/membership-store";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import type { GoogleAdminGroupsFetcher as GoogleAdminGroupsFetcherType } from "./google-admin-groups-fetcher";
 
@@ -52,6 +53,28 @@ export class RegistryTenantResolver implements TenantResolver {
   async resolveTenantId(email: string): Promise<string> {
     const domain = domainFromEmail(email);
     return resolveTenantIdFromRegistry(this.dynamo, this.tableName, domain);
+  }
+}
+
+/**
+ * Membership-first tenant resolver (multi-user support). Resolves the user's
+ * tenant from their ACTIVE membership record; falls back to the domain→tenant
+ * registry for the provisioning admin (whose membership is created at
+ * activation) and for any user whose membership has not yet been recorded.
+ * Fails closed when neither source resolves the user.
+ */
+export class MembershipTenantResolver implements TenantResolver {
+  constructor(
+    private readonly dynamo: DynamoDBClient,
+    private readonly membershipTableName: string,
+    private readonly registryTableName: string
+  ) {}
+
+  async resolveTenantId(email: string): Promise<string> {
+    const member = await resolveTenantFromMembership(this.dynamo, this.membershipTableName, email);
+    if (member) return member.tenantId;
+    const domain = domainFromEmail(email);
+    return resolveTenantIdFromRegistry(this.dynamo, this.registryTableName, domain);
   }
 }
 
@@ -178,12 +201,17 @@ export const handler = async (
     fetchGroupsForUser: async (email) => (await getGoogleAdminGroupsFetcher()).fetchGroupsForUser(email),
   };
 
-  // Use the registry-backed resolver when a tenant registry table is
-  // configured (STORY-B2); otherwise fall back to the domain resolver.
+  // Tenant resolution order: membership first (multi-user support), then the
+  // domain→tenant registry. When a membership table is configured, use the
+  // membership-first resolver; otherwise fall back to the registry resolver
+  // (or the domain resolver when no registry is configured either).
   const registryTable = process.env.TENANT_REGISTRY_TABLE_NAME ?? "";
-  const tenantResolver: TenantResolver = registryTable
-    ? new RegistryTenantResolver(new DynamoDBClient({}), registryTable)
-    : new DomainTenantResolver();
+  const membershipTable = process.env.TENANT_MEMBERSHIP_TABLE_NAME ?? "";
+  const tenantResolver: TenantResolver = membershipTable
+    ? new MembershipTenantResolver(new DynamoDBClient({}), membershipTable, registryTable)
+    : registryTable
+      ? new RegistryTenantResolver(new DynamoDBClient({}), registryTable)
+      : new DomainTenantResolver();
 
   return buildGroupOverride(event, fetcher, tenantResolver);
 };

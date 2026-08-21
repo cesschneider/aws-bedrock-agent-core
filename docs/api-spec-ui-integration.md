@@ -13,7 +13,18 @@ implementação.
 | Chat | `https://fubcenfu74tcomihthllz7lpaq0wjpfw.lambda-url.us-east-1.on.aws/` |
 | Upload | `https://9xgzlkfq3e.execute-api.us-east-1.amazonaws.com` |
 | Documents | `https://w1a89nq56l.execute-api.us-east-1.amazonaws.com` |
+| Catalog (departamentos/tags) | `https://k46nbxrrl0.execute-api.us-east-1.amazonaws.com` |
 | Provisioning | `https://8jpargtrs5.execute-api.us-east-1.amazonaws.com` |
+
+> **Spec pública da API (endpoint sem auth)** — serve a documentação completa
+> e sempre atualizada como JSON (ou HTML com `Accept: text/html`):
+>
+> ```
+> https://7xqw4qroq2.execute-api.us-east-1.amazonaws.com/docs
+> ```
+>
+> Use essa URL como fonte de verdade para a UI; o conteúdo é embutido no build
+> e fica sempre consistente com o código deployado.
 
 Cognito (dev):
 
@@ -94,7 +105,9 @@ authorization: Bearer <id-token>
 ```json
 {
   "message": "What is the remote work policy?",
-  "sessionId": "optional-uuid-for-multi-turn"
+  "sessionId": "optional-uuid-for-multi-turn",
+  "departments": ["dept-engineering"],
+  "tags": ["finance"]
 }
 ```
 
@@ -102,6 +115,12 @@ authorization: Bearer <id-token>
 |---|---|---|---|
 | `message` | string | sim | A pergunta |
 | `sessionId` | string | não | Omita para nova conversa; reutilize para continuar |
+| `departments` | string[] | não | Subconjunto dos departamentos do usuário para restringir a busca |
+| `tags` | string[] | não | Restringe a retrieval a documentos com pelo menos uma dessas tags |
+
+> `departments` só pode **restringir**, nunca expandir: pedir um departamento que
+> o usuário não pertence retorna `403`. `tags` deve vir do catálogo normalizado
+> do tenant (ver seção 7).
 
 **Response `200`**
 
@@ -351,7 +370,115 @@ curl -X DELETE https://w1a89nq56l.execute-api.us-east-1.amazonaws.com/documents/
 
 ---
 
-## 7. Notas de implementação (UI)
+## 7. Catalog — departamentos e tags por tenant
+
+Base: `https://k46nbxrrl0.execute-api.us-east-1.amazonaws.com`
+
+Gerencia listas de departamentos (para dropdowns administrativos) e tags
+normalizadas (para classificar conteúdo). Todos os endpoints exigem JWT.
+
+**Regras de acesso**
+
+| Operação | Quem pode |
+|---|---|
+| Listar (`GET`) | Qualquer membro do tenant |
+| Criar / remover (`POST` / `DELETE`) | Apenas o admin do tenant (email registrado no provisioning) |
+
+**Normalização de nomes** — lowercase, alfanumérico/hífen/underscore, máx 64
+chars. Nome inválido → `400`.
+
+### 7.1 Departamentos
+
+| Método | Path | Descrição |
+|---|---|---|
+| `GET` | `/catalog/departments` | Lista ordenada de departamentos |
+| `POST` | `/catalog/departments` | Cria um departamento |
+| `DELETE` | `/catalog/departments/{name}` | Remove um departamento |
+
+**Listar** — response `200`
+
+```json
+{ "departments": ["dept-engineering", "dept-hr"] }
+```
+
+**Criar** — request
+
+```json
+{ "name": "dept-engineering" }
+```
+
+Response `201`
+
+```json
+{ "name": "dept-engineering", "kind": "department" }
+```
+
+**Remover** — response `200`
+
+```json
+{ "deleted": true, "name": "dept-engineering", "kind": "department" }
+```
+
+### 7.2 Tags
+
+| Método | Path | Descrição |
+|---|---|---|
+| `GET` | `/catalog/tags` | Lista ordenada de tags normalizadas |
+| `POST` | `/catalog/tags` | Cria uma tag |
+| `DELETE` | `/catalog/tags/{name}` | Remove uma tag |
+
+**Listar** — response `200`
+
+```json
+{ "tags": ["finance", "q3"] }
+```
+
+**Criar** — request
+
+```json
+{ "name": "finance" }
+```
+
+Response `201`
+
+```json
+{ "name": "finance", "kind": "tag" }
+```
+
+**Erros comuns**
+
+| Status | Body | Significado |
+|---|---|---|
+| 400 | `{"error":"Invalid name: use lowercase letters, digits, hyphens, or underscores (max 64 chars)"}` | Nome inválido |
+| 403 | `{"error":"Only the tenant admin can manage the catalog"}` | Usuário não é admin |
+| 409 | `{"error":"… already exists"}` | Nome já existe |
+
+**Exemplo curl**
+
+```bash
+# Listar departamentos
+curl https://k46nbxrrl0.execute-api.us-east-1.amazonaws.com/catalog/departments \
+  -H "authorization: Bearer ***"
+
+# Criar uma tag
+curl -X POST https://k46nbxrrl0.execute-api.us-east-1.amazonaws.com/catalog/tags \
+  -H "content-type: application/json" \
+  -H "authorization: Bearer ***" \
+  -d '{"name":"finance"}'
+
+# Remover uma tag
+curl -X DELETE https://k46nbxrrl0.execute-api.us-east-1.amazonaws.com/catalog/tags/finance \
+  -H "authorization: Bearer ***"
+```
+
+> **Tags no upload** — quando o tenant tem um catálogo de tags populado, o
+> upload rejeita tags fora dele (`400 Unknown tags: …`). Catálogo vazio aceita
+> qualquer tag (compatibilidade). A UI deve popular o seletor de tags a partir
+> de `GET /catalog/tags`.
+
+---
+
+## 8. Notas de implementação (UI)
 
 - **Tela de documentos**: nova aba que chama `GET /documents` e renderiza
   tabela/lista com `filename`, `department`, `sizeBytes` (formatado), `tags`
@@ -369,12 +496,21 @@ curl -X DELETE https://w1a89nq56l.execute-api.us-east-1.amazonaws.com/documents/
   existentes.
 - **Token**: armazene o ID token em memória/localStorage; anexe a todas as
   chamadas autenticadas; renove silenciosamente e redirecione ao login em 401.
-- **Config**: centralize as 4 base URLs em um único arquivo de config para
+- **Config**: centralize as 5 base URLs em um único arquivo de config para
   trocar por ambiente facilmente.
+- **Dropdowns de departamento/tags**: popule os seletores de filtro (chat) e
+  de tags (upload) a partir de `GET /catalog/departments` e `GET /catalog/tags`.
+  Não deixe o usuário digitar tags livres quando o catálogo estiver populado.
+- **Admin UI**: se o usuário for admin do tenant, exiba uma tela para
+  criar/remover departamentos e tags (`POST`/`DELETE` em `/catalog/*`).
+  Não-admin veem as listas apenas em modo leitura.
+- **Filtro de chat**: envie `departments` e/ou `tags` opcionais no request do
+  chat para restringir a retrieval. `departments` deve ser subconjunto dos
+  departamentos do usuário (o backend rejeita expansão com `403`).
 
 ---
 
-## 8. Fluxo completo de exemplo (upload → listar → deletar)
+## 9. Fluxo completo de exemplo (upload → listar → deletar)
 
 ```bash
 # 1. Login e captura do ID token (via UI ou CLI)

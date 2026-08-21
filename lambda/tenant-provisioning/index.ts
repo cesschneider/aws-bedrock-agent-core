@@ -7,6 +7,7 @@ import {
   createTenant,
   TenantRegistryError,
 } from "../common/tenant-registry";
+import { createAdminMembership } from "../common/membership-store";
 import { domainFromEmail } from "../common/auth";
 
 /**
@@ -24,6 +25,7 @@ import { domainFromEmail } from "../common/auth";
 
 const dynamo = new DynamoDBClient({});
 const tableName = process.env.TENANT_REGISTRY_TABLE_NAME ?? "";
+const membershipTableName = process.env.TENANT_MEMBERSHIP_TABLE_NAME ?? "";
 
 // SES is optional: when FROM_EMAIL is configured the verification link is
 // emailed; otherwise the sender logs the link (dev fallback) so the flow
@@ -124,6 +126,24 @@ export async function handleConfirm(event: APIGatewayProxyEventV2): Promise<APIG
     }
 
     const record = await activateTenant(dynamo, tableName, domain, token);
+
+    // The first user of the tenant is the provisioning admin. Create their
+    // ACTIVE admin membership so they can log in and invite others. Best
+    // effort: if the membership table isn't configured (or the admin already
+    // has a membership), the tenant is still activated.
+    if (membershipTableName) {
+      try {
+        await createAdminMembership(dynamo, membershipTableName, {
+          email: record.adminEmail,
+          tenantId: record.tenantId,
+        });
+      } catch (err) {
+        if ((err as Error).name !== "ConditionalCheckFailedException") {
+          console.error("Failed to create admin membership:", err);
+        }
+      }
+    }
+
     return json(200, { domain: record.domain, tenantId: record.tenantId, status: record.status });
   } catch (err) {
     if (err instanceof TenantRegistryError) {
