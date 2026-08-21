@@ -26,6 +26,8 @@ export interface IdentityProps {
   googleWorkspaceAdminEmail: string;
   /** Tenant registry table — enables registry-backed tenant resolution. */
   tenantRegistryTable?: dynamodb.Table;
+  /** Tenant membership table — enables membership-first tenant resolution. */
+  tenantMembershipTable?: dynamodb.Table;
   /**
    * Optional temporary password for a native (non-Google) dev test user,
    * resolved at synthesis time via ssm.StringParameter.valueFromLookup
@@ -74,6 +76,7 @@ export class Identity extends Construct {
         GOOGLE_SERVICE_ACCOUNT_KEY_PARAM: props.googleServiceAccountKeyParam,
         GOOGLE_WORKSPACE_ADMIN_EMAIL: props.googleWorkspaceAdminEmail,
         TENANT_REGISTRY_TABLE_NAME: props.tenantRegistryTable?.tableName ?? "",
+        TENANT_MEMBERSHIP_TABLE_NAME: props.tenantMembershipTable?.tableName ?? "",
       },
       timeout: cdk.Duration.seconds(10),
       logGroup,
@@ -94,6 +97,8 @@ export class Identity extends Construct {
 
     // Read access to the tenant registry for domain → tenant resolution.
     props.tenantRegistryTable?.grantReadData(preTokenGeneration);
+    // Read access to the membership table for membership-first resolution.
+    props.tenantMembershipTable?.grantReadData(preTokenGeneration);
 
     this.userPool = new cognito.UserPool(this, "UserPool", {
       userPoolName: `rag-knowledge-agent-${props.envName}`,

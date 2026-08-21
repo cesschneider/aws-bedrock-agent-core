@@ -13,6 +13,7 @@ import {
   type CatalogKind,
 } from "../common/catalog-store";
 import { getTenant } from "../common/tenant-registry";
+import { isTenantAdmin } from "../common/membership-store";
 import { domainFromEmail } from "../common/auth";
 
 /**
@@ -35,6 +36,7 @@ import { domainFromEmail } from "../common/auth";
 const dynamo = new DynamoDBClient({});
 const tableName = process.env.TENANT_CATALOG_TABLE_NAME ?? "";
 const tenantRegistryTable = process.env.TENANT_REGISTRY_TABLE_NAME ?? "";
+const membershipTable = process.env.TENANT_MEMBERSHIP_TABLE_NAME ?? "";
 const envName = process.env.ENV_NAME ?? "";
 
 function json(statusCode: number, body: unknown): APIGatewayProxyStructuredResultV2 {
@@ -57,10 +59,9 @@ function authFromEvent(event: APIGatewayProxyEventV2WithJWTAuthorizer): AuthCont
 }
 
 /**
- * A caller is an admin when their email matches the tenant's recorded
- * adminEmail. The tenant registry is keyed by email domain, so we derive the
- * domain from the caller's email. Fails closed: if the tenant record is
- * missing, no one is admin.
+ * A caller is an admin when their membership record (or, for the provisioning
+ * admin, the tenant registry) marks them as admin. Fails closed: if neither
+ * source resolves the caller as admin, they are not admin.
  *
  * Exception: the `dev` tenant is a native-user test tenant (no registry
  * record, single test user) that only exists in non-prd environments. Any
@@ -73,6 +74,13 @@ async function isAdmin(tenantId: string, email: string): Promise<boolean> {
   // `dev` tenant is treated as admin so the admin UI can be exercised
   // end-to-end in dev/stg. Gated on ENV_NAME so it can never apply in prd.
   if (tenantId === "dev" && envName !== "prd") return true;
+
+  // Membership-first: an ACTIVE admin membership is authoritative.
+  if (membershipTable && email) {
+    if (await isTenantAdmin(dynamo, membershipTable, tenantId, email)) return true;
+  }
+
+  // Fallback: the tenant registry's recorded adminEmail (provisioning admin).
   if (!tenantRegistryTable || !email) return false;
   let domain: string;
   try {
@@ -82,8 +90,6 @@ async function isAdmin(tenantId: string, email: string): Promise<boolean> {
   }
   const record = await getTenant(dynamo, tenantRegistryTable, domain);
   if (!record) return false;
-  // The resolved tenant must match the caller's tenant claim, and the email
-  // must be the recorded admin.
   return record.tenantId === tenantId && record.adminEmail.toLowerCase() === email.toLowerCase();
 }
 
