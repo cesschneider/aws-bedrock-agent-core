@@ -110,6 +110,9 @@ describe("buildGroupOverride", () => {
 
     const override = result.response.claimsAndScopeOverrideDetails;
     expect(override?.idTokenGeneration?.claimsToAddOrOverride?.["custom:tenantId"]).toBe("acme.com");
+    expect(override?.idTokenGeneration?.claimsToAddOrOverride?.["custom:departments"]).toBe(
+      "acme.com:dept-engineering,acme.com:org-wide"
+    );
     expect(override?.groupOverrideDetails?.groupsToOverride).toEqual([
       "acme.com:dept-engineering",
       "acme.com:org-wide",

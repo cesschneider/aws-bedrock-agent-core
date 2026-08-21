@@ -129,7 +129,14 @@ export async function buildGroupOverride(
       // Emit the tenant as a custom claim so downstream (jwt-auth) can scope
       // retrieval. Custom claims must be prefixed with "custom:".
       idTokenGeneration: {
-        claimsToAddOrOverride: { "custom:tenantId": tenantId },
+        claimsToAddOrOverride: {
+          "custom:tenantId": tenantId,
+          // API Gateway's HTTP API JWT authorizer drops ARRAY claims (it only
+          // forwards string claims), so `cognito:groups` never reaches the
+          // upload-handler Lambda. Emit the departments as a comma-separated
+          // STRING custom claim too, which survives the gateway.
+          "custom:departments": scopedDepartments.join(","),
+        },
       },
       groupOverrideDetails: {
         groupsToOverride: scopedDepartments,

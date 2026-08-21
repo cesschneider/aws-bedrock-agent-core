@@ -42,6 +42,17 @@ export class UploadPipeline extends Construct {
       autoDeleteObjects: props.envName !== "prd",
     });
 
+    // The browser POSTs the file directly to S3 via the presigned URL, so the
+    // bucket must allow cross-origin POSTs from the frontend. Without this the
+    // upload fails with a CORS error even though the API call succeeded.
+    // Tighten allowedOrigins to the frontend origin once it is known.
+    this.bucket.addCorsRule({
+      allowedMethods: [s3.HttpMethods.POST],
+      allowedOrigins: ["*"],
+      allowedHeaders: ["*"],
+      maxAge: 3000,
+    });
+
     const logGroup = new logs.LogGroup(this, "UploadHandlerLogGroup", {
       retention: retentionFor(props.envName),
       removalPolicy: props.envName === "prd" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,

@@ -37,5 +37,21 @@ describe("UploadApi", () => {
     const authorizers = JSON.stringify(template.findResources("AWS::ApiGatewayV2::Authorizer"));
     expect(authorizers).toContain("cognito-idp.us-east-1.amazonaws.com");
   });
+
+  it("configures CORS on the raw-documents bucket so the browser can POST directly to S3", () => {
+    const template = synthDev();
+    template.hasResourceProperties("AWS::S3::Bucket", {
+      CorsConfiguration: {
+        CorsRules: [
+          {
+            AllowedMethods: ["POST"],
+            AllowedOrigins: ["*"],
+            AllowedHeaders: ["*"],
+            MaxAge: 3000,
+          },
+        ],
+      },
+    });
+  });
 });
 
