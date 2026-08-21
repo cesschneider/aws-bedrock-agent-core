@@ -41,6 +41,7 @@ function makeDeps(): UploadDependencies {
     dynamo: { send: jest.fn().mockResolvedValue({}) } as unknown as DynamoDBClient,
     bucketName: "raw-documents-test",
     registryTableName: "document-registry-test",
+    catalogTableName: "tenant-catalog-test",
   };
 }
 
@@ -112,7 +113,10 @@ describe("handleUploadRequest", () => {
     const result = await handleUploadRequest(event, deps);
     expect(result.statusCode).toBe(200);
 
-    const putCall = (deps.dynamo.send as jest.Mock).mock.calls[0][0];
+    // The PutItem (registry write) is the last DynamoDB call; the catalog
+    // tag-validation Query precedes it.
+    const calls = (deps.dynamo.send as jest.Mock).mock.calls;
+    const putCall = calls[calls.length - 1][0];
     expect(putCall.input.Item.tags.SS).toEqual(["finance", "q3"]);
   });
 
