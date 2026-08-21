@@ -9,27 +9,27 @@ import {
 } from "./auth";
 
 describe("parseDepartmentClaims", () => {
-  it("parses a comma-separated cognito:groups claim (already namespaced)", () => {
+  it("parses a comma-separated custom:departments claim (already namespaced)", () => {
     const result = parseDepartmentClaims({
-      "cognito:groups": "acme-com:engineering,acme-com:finance",
+      "custom:departments": "acme-com:engineering,acme-com:finance",
     });
     expect(result).toEqual(["acme-com:engineering", "acme-com:finance"]);
   });
 
   it("parses a single group", () => {
-    const result = parseDepartmentClaims({ "cognito:groups": "acme-com:engineering" });
+    const result = parseDepartmentClaims({ "custom:departments": "acme-com:engineering" });
     expect(result).toEqual(["acme-com:engineering"]);
   });
 
   it("trims whitespace around group names", () => {
     const result = parseDepartmentClaims({
-      "cognito:groups": " acme-com:engineering , acme-com:finance ",
+      "custom:departments": " acme-com:engineering , acme-com:finance ",
     });
     expect(result).toEqual(["acme-com:engineering", "acme-com:finance"]);
   });
 
   it("returns an empty array for a user with zero department groups", () => {
-    const result = parseDepartmentClaims({ "cognito:groups": "" });
+    const result = parseDepartmentClaims({ "custom:departments": "" });
     expect(result).toEqual([]);
   });
 
@@ -39,7 +39,7 @@ describe("parseDepartmentClaims", () => {
   });
 
   it("does NOT inject org-wide (that requires tenant context)", () => {
-    const result = parseDepartmentClaims({ "cognito:groups": "acme-com:engineering" });
+    const result = parseDepartmentClaims({ "custom:departments": "acme-com:engineering" });
     expect(result).not.toContain("acme-com:org-wide");
   });
 });

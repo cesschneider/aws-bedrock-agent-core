@@ -16,7 +16,7 @@ function makeEvent(overrides: {
 }): APIGatewayProxyEventV2WithJWTAuthorizer {
   const claims: Record<string, string> = {};
   if (overrides.groups !== undefined) {
-    claims["cognito:groups"] = overrides.groups;
+    claims["custom:departments"] = overrides.groups;
   }
   // Default tenant for all tests; individual tests can override.
   claims["custom:tenantId"] = overrides.tenantId ?? "acme-com";
