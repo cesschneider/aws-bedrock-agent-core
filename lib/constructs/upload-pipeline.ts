@@ -15,6 +15,8 @@ export interface UploadPipelineProps {
   envName: string;
   /** Document registry table the upload-handler writes PENDING records to. */
   registryTable: dynamodb.Table;
+  /** Tenant catalog table the upload-handler validates tags against. */
+  catalogTable: dynamodb.Table;
 }
 
 /**
@@ -68,6 +70,7 @@ export class UploadPipeline extends Construct {
       environment: {
         UPLOAD_BUCKET_NAME: this.bucket.bucketName,
         DOCUMENT_REGISTRY_TABLE_NAME: props.registryTable.tableName,
+        TENANT_CATALOG_TABLE_NAME: props.catalogTable.tableName,
       },
       timeout: cdk.Duration.seconds(10),
       logGroup,
@@ -78,6 +81,8 @@ export class UploadPipeline extends Construct {
     this.bucket.grantPut(this.uploadHandler);
     // Write access to the document registry (PENDING records at upload time).
     props.registryTable.grantWriteData(this.uploadHandler);
+    // Read access to the tenant catalog (tag normalization on upload).
+    props.catalogTable.grantReadData(this.uploadHandler);
   }
 }
 

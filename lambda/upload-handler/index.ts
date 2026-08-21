@@ -8,6 +8,7 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 import { ORG_WIDE, namespacedDepartment, parseDepartmentClaims, tenantOrgWide, userCanAccessDepartment } from "../common/auth";
 import { putDocument, type DocumentRecord } from "../common/document-store";
+import { validateTagsAgainstCatalog } from "../common/catalog-store";
 
 /** Bedrock KB default-supported office document types (spec Section 2, Goals). */
 const ALLOWED_CONTENT_TYPES = new Set([
@@ -97,6 +98,7 @@ export interface UploadDependencies {
   dynamo: DynamoDBClient;
   bucketName: string;
   registryTableName: string;
+  catalogTableName: string;
 }
 
 export async function handleUploadRequest(
@@ -148,6 +150,24 @@ export async function handleUploadRequest(
   const documentId = randomUUID();
   const key = buildObjectKey(tenantId.trim(), body.department, documentId, body.filename);
 
+  // Normalize tags against the tenant's catalog. When the tenant has seeded
+  // a tag vocabulary, uploads must draw from it (no ad-hoc tags); an empty
+  // catalog allows anything (backward-compatible rollout).
+  const tagCheck = await validateTagsAgainstCatalog(
+    deps.dynamo,
+    deps.catalogTableName,
+    tenantId.trim(),
+    body.tags ?? []
+  );
+  if (!tagCheck.valid) {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({
+        error: `Unknown tags: ${tagCheck.unknown.join(", ")}. Use tags from the tenant catalog.`,
+      }),
+    };
+  }
+
   // Persist a PENDING registry record so the document is immediately visible
   // to the list/get API, even before ingestion completes. kb-sync-trigger
   // updates size + status to INDEXED once the object is observed.
@@ -194,6 +214,7 @@ const s3 = new S3Client({});
 const dynamo = new DynamoDBClient({});
 const BUCKET_NAME = process.env.UPLOAD_BUCKET_NAME ?? "";
 const REGISTRY_TABLE_NAME = process.env.DOCUMENT_REGISTRY_TABLE_NAME ?? "";
+const CATALOG_TABLE_NAME = process.env.TENANT_CATALOG_TABLE_NAME ?? "";
 
 export const handler = async (
   event: APIGatewayProxyEventV2WithJWTAuthorizer
@@ -204,10 +225,14 @@ export const handler = async (
   if (!REGISTRY_TABLE_NAME) {
     throw new Error("DOCUMENT_REGISTRY_TABLE_NAME environment variable is not set");
   }
+  if (!CATALOG_TABLE_NAME) {
+    throw new Error("TENANT_CATALOG_TABLE_NAME environment variable is not set");
+  }
   return handleUploadRequest(event, {
     s3Client: s3,
     dynamo,
     bucketName: BUCKET_NAME,
     registryTableName: REGISTRY_TABLE_NAME,
+    catalogTableName: CATALOG_TABLE_NAME,
   });
 };

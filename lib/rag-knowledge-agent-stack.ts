@@ -18,6 +18,8 @@ import { TenantProvisioningApi } from "./constructs/tenant-provisioning-api";
 import { DocumentRegistry } from "./constructs/document-registry";
 import { DocumentsApi } from "./constructs/documents-api";
 import { DocsApi } from "./constructs/docs-api";
+import { TenantCatalog } from "./constructs/tenant-catalog";
+import { CatalogApi } from "./constructs/catalog-api";
 
 export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
   /** Deployment environment slug: dev | stg | prd */
@@ -60,6 +62,8 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
   public readonly documentRegistry: DocumentRegistry;
   public readonly documentsApi: DocumentsApi;
   public readonly docsApi: DocsApi;
+  public readonly tenantCatalog: TenantCatalog;
+  public readonly catalogApi: CatalogApi;
 
   constructor(scope: Construct, id: string, props: RagKnowledgeAgentStackProps) {
     super(scope, id, props);
@@ -75,9 +79,16 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
       envName: this.envName,
     });
 
+    // Per-tenant catalog of administrable departments + normalized tags. The
+    // upload pipeline validates tags against it (when seeded).
+    this.tenantCatalog = new TenantCatalog(this, "TenantCatalog", {
+      envName: this.envName,
+    });
+
     this.uploadPipeline = new UploadPipeline(this, "UploadPipeline", {
       envName: this.envName,
       registryTable: this.documentRegistry.table,
+      catalogTable: this.tenantCatalog.table,
     });
 
     // S3 Vectors bucket + index are IaC-managed like everything else
@@ -192,6 +203,28 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
     // Public (no-auth) API documentation endpoint.
     this.docsApi = new DocsApi(this, "DocsApi", {
       envName: this.envName,
+    });
+
+    // Per-tenant department + tag catalog API (admin-managed dropdowns and
+    // normalized tag vocabulary).
+    const catalogHandler = new lambdaNode.NodejsFunction(this, "CatalogHandler", {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      entry: path.join(__dirname, "../lambda/catalog-handler/index.ts"),
+      handler: "handler",
+      environment: {
+        TENANT_CATALOG_TABLE_NAME: this.tenantCatalog.table.tableName,
+        TENANT_REGISTRY_TABLE_NAME: this.tenantRegistry.table.tableName,
+      },
+      timeout: cdk.Duration.seconds(10),
+    });
+    this.tenantCatalog.table.grantReadWriteData(catalogHandler);
+    this.tenantRegistry.table.grantReadData(catalogHandler);
+
+    this.catalogApi = new CatalogApi(this, "CatalogApi", {
+      envName: this.envName,
+      catalogHandler,
+      userPool: this.identity.userPool,
+      userPoolClient: this.identity.userPoolClient,
     });
 
     // Surface the values the chat CLI and the upload guide need, so they can
