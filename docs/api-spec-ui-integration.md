@@ -14,7 +14,8 @@ implementação.
 | Upload | `https://9xgzlkfq3e.execute-api.us-east-1.amazonaws.com` |
 | Documents | `https://w1a89nq56l.execute-api.us-east-1.amazonaws.com` |
 | Catalog (departamentos/tags) | `https://k46nbxrrl0.execute-api.us-east-1.amazonaws.com` |
-| Provisioning | `https://8jpargtrs5.execute-api.us-east-1.amazonaws.com` |
+| Organizations (criar org) | `https://hvn1deth68.execute-api.us-east-1.amazonaws.com` |
+| Members (membros da org) | `https://qsdndxv5o1.execute-api.us-east-1.amazonaws.com` |
 
 > **Spec pública da API (endpoint sem auth)** — serve a documentação completa
 > e sempre atualizada como JSON (ou HTML com `Accept: text/html`):
@@ -34,7 +35,7 @@ Cognito (dev):
 | Client ID | `3cps1plup69q20rkqpic0caeik` |
 | Region | `us-east-1` |
 
-> As URLs de Upload/Documents/Provisioning são outputs do CloudFormation e
+> As URLs de Upload/Documents/Organizations/Members são outputs do CloudFormation e
 > mudam a cada redeploy. Re-descubra com:
 > ```bash
 > aws cloudformation describe-stacks --stack-name RagKnowledgeAgent-dev \
@@ -54,15 +55,14 @@ Authorization: Bearer <id-token>
 ```
 
 - **Chat** — Function URL sem authorizer; o Lambda valida o JWT.
-- **Upload / Documents** — API Gateway com JWT authorizer (Cognito).
-- **Provisioning** — sem auth (sign-up anônimo).
+- **Upload / Documents / Catalog / Organizations / Members** — API Gateway com JWT authorizer (Cognito).
 
 O ID token carrega:
 
 | Claim | Significado |
 |---|---|
-| `custom:tenantId` | Tenant do usuário (ex. `dev`) |
-| `custom:departments` | Departamentos namespaced, separados por vírgula (ex. `dev:dept-engineering,dev:org-wide`) |
+| `custom:tenantId` | Tenant do usuário (ex. `acme-corporation`). **Ausente** para usuário Google sem organização (pode criar/entrar em org, mas não recupera dados) |
+| `custom:departments` | Departamentos namespaced, separados por vírgula (ex. `acme-corporation:dept-engineering,acme-corporation:org-wide`) |
 
 > A UI **não** deve filtrar por tenant/departamento — apenas envia o token e
 > renderiza o que o backend retorna. O isolamento é feito no servidor.
@@ -335,42 +335,194 @@ curl -X DELETE https://w1a89nq56l.execute-api.us-east-1.amazonaws.com/documents/
 
 ---
 
-## 6. Provisioning — criar/confirmar tenant (sem auth)
+## 6. Organizations — criar organização (Google account)
 
-### 6.1 Sign-up
+Base: `https://hvn1deth68.execute-api.us-east-1.amazonaws.com`
 
-`POST /signup`
+Fluxo de criação de conta: o usuário autoriza com **Google**, escolhe o nome
+da organização, e a org é criada junto com o usuário como **admin**. Não há
+ação de domínio nem token de verificação por email.
+
+### 6.1 Verificar disponibilidade do nome
+
+`GET /organizations/check-name?name=…`
+
+**Response `200`**
 
 ```json
-{ "name": "Acme Corp", "adminEmail": "admin@acme.com", "domain": "acme.com" }
+{ "name": "Acme Corporation", "slug": "acme-corporation", "available": true }
+```
+
+Quando indisponível ou inválido:
+
+```json
+{ "name": "Acme Corporation", "slug": "acme-corporation", "available": false }
+```
+
+```json
+{ "name": "!!!", "slug": "", "available": false, "reason": "invalid-name" }
+```
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `name` | string | Nome enviado (eco) |
+| `slug` | string | Slug derivado (vazio se inválido) |
+| `available` | boolean | `true` se o nome é válido e livre |
+| `reason` | string \| undefined | `invalid-name` quando o nome não gera slug válido |
+
+### 6.2 Criar organização
+
+`POST /organizations`
+
+```json
+{ "name": "Acme Corporation" }
 ```
 
 **Response `201`**
 
 ```json
-{ "domain": "acme.com", "tenantId": "acme-com", "status": "PENDING" }
+{
+  "tenantId": "acme-corporation",
+  "name": "Acme Corporation",
+  "adminEmail": "user@gmail.com",
+  "status": "ACTIVE"
+}
 ```
 
-### 6.2 Confirmar
+| Campo | Tipo | Notas |
+|---|---|---|
+| `tenantId` | string | Slug do nome; é o tenant usado em todas as chamadas |
+| `name` | string | Nome original |
+| `adminEmail` | string | Email Google do criador (vira admin) |
+| `status` | string | `ACTIVE` |
 
-`POST /confirm`
+**Erros**
+
+| Status | Body | Significado |
+|---|---|---|
+| 400 | `{"error":"Invalid organization name"}` | Nome não gera slug válido |
+| 409 | `{"error":"Organization name already taken"}` | Nome já em uso |
+| 409 | `{"error":"You already belong to an organization"}` | Usuário já é membro de uma org |
+
+> **Regra de slug** — lowercase, alfanumérico/hífen, máx 64 chars. `"Acme
+> Corporation"` → `acme-corporation`. Nomes que colapsam para slug vazio são
+> rejeitados.
+
+> **Um usuário = uma organização.** Após criar/entrar em uma org, o usuário
+> não pode criar outra. O `custom:tenantId` passa a ser emitido no próximo
+> login (o token atual não muda até reautenticar).
+
+**Exemplo curl**
+
+```bash
+# Verificar disponibilidade
+curl "https://hvn1deth68.execute-api.us-east-1.amazonaws.com/organizations/check-name?name=Acme%20Corporation" \
+  -H "authorization: Bearer ***"
+
+# Criar organização
+curl -X POST https://hvn1deth68.execute-api.us-east-1.amazonaws.com/organizations \
+  -H "content-type: application/json" \
+  -H "authorization: Bearer ***" \
+  -d '{"name":"Acme Corporation"}'
+```
+
+---
+
+## 7. Members — gerenciar membros da organização
+
+Base: `https://qsdndxv5o1.execute-api.us-east-1.amazonaws.com`
+
+O admin convida usuários por email; o convidado aceita o convite e passa a
+fazer parte da organização (acesso aos dados do tenant).
+
+**Regras de acesso**
+
+| Operação | Quem pode |
+|---|---|
+| Listar (`GET`) | Qualquer membro do tenant |
+| Convidar / remover (`POST` / `DELETE`) | Apenas o admin do tenant |
+
+### 7.1 Listar membros
+
+`GET /members`
+
+**Response `200`**
 
 ```json
-{ "domain": "acme.com", "token": "<verification-token>" }
+{
+  "members": [
+    { "email": "admin@acme.com", "role": "admin", "status": "ACTIVE" },
+    { "email": "user@acme.com", "role": "member", "status": "ACTIVE" },
+    { "email": "pending@acme.com", "role": "member", "status": "INVITED" }
+  ]
+}
+```
+
+### 7.2 Convidar membro
+
+`POST /members/invite`
+
+```json
+{ "email": "user@acme.com" }
+```
+
+**Response `201`**
+
+```json
+{ "email": "user@acme.com", "role": "member", "status": "INVITED" }
+```
+
+> O convite é registrado no tenant. Quando o convidado autentica com Google
+> (mesmo email), ele passa a fazer parte da organização automaticamente.
+
+### 7.3 Aceitar convite
+
+`POST /members/accept`
+
+```json
+{ "tenantId": "acme-corporation" }
 ```
 
 **Response `200`**
 
 ```json
-{ "domain": "acme.com", "tenantId": "acme-com", "status": "ACTIVE" }
+{ "email": "user@acme.com", "role": "member", "status": "ACTIVE" }
 ```
 
-> O token de verificação é enviado por email (ou logado em dev). O tenant só
-> fica utilizável após `ACTIVE`.
+### 7.4 Remover membro
+
+`DELETE /members/{email}`
+
+**Response `200`**
+
+```json
+{ "removed": true, "email": "user@acme.com" }
+```
+
+**Erros comuns**
+
+| Status | Body | Significado |
+|---|---|---|
+| 403 | `{"error":"Only the tenant admin can manage members"}` | Usuário não é admin |
+| 404 | `{"error":"Member not found"}` | Email não é membro do tenant |
+
+**Exemplo curl**
+
+```bash
+# Listar membros
+curl https://qsdndxv5o1.execute-api.us-east-1.amazonaws.com/members \
+  -H "authorization: Bearer ***"
+
+# Convidar
+curl -X POST https://qsdndxv5o1.execute-api.us-east-1.amazonaws.com/members/invite \
+  -H "content-type: application/json" \
+  -H "authorization: Bearer ***" \
+  -d '{"email":"user@acme.com"}'
+```
 
 ---
 
-## 7. Catalog — departamentos e tags por tenant
+## 8. Catalog — departamentos e tags por tenant
 
 Base: `https://k46nbxrrl0.execute-api.us-east-1.amazonaws.com`
 
@@ -382,12 +534,12 @@ normalizadas (para classificar conteúdo). Todos os endpoints exigem JWT.
 | Operação | Quem pode |
 |---|---|
 | Listar (`GET`) | Qualquer membro do tenant |
-| Criar / remover (`POST` / `DELETE`) | Apenas o admin do tenant (email registrado no provisioning) |
+| Criar / remover (`POST` / `DELETE`) | Apenas o admin do tenant (membership `role: admin`) |
 
 **Normalização de nomes** — lowercase, alfanumérico/hífen/underscore, máx 64
 chars. Nome inválido → `400`.
 
-### 7.1 Departamentos
+### 8.1 Departamentos
 
 | Método | Path | Descrição |
 |---|---|---|
@@ -419,7 +571,7 @@ Response `201`
 { "deleted": true, "name": "dept-engineering", "kind": "department" }
 ```
 
-### 7.2 Tags
+### 8.2 Tags
 
 | Método | Path | Descrição |
 |---|---|---|
@@ -478,7 +630,7 @@ curl -X DELETE https://k46nbxrrl0.execute-api.us-east-1.amazonaws.com/catalog/ta
 
 ---
 
-## 8. Notas de implementação (UI)
+## 9. Notas de implementação (UI)
 
 - **Tela de documentos**: nova aba que chama `GET /documents` e renderiza
   tabela/lista com `filename`, `department`, `sizeBytes` (formatado), `tags`
@@ -496,8 +648,17 @@ curl -X DELETE https://k46nbxrrl0.execute-api.us-east-1.amazonaws.com/catalog/ta
   existentes.
 - **Token**: armazene o ID token em memória/localStorage; anexe a todas as
   chamadas autenticadas; renove silenciosamente e redirecione ao login em 401.
-- **Config**: centralize as 5 base URLs em um único arquivo de config para
+- **Config**: centralize as 7 base URLs em um único arquivo de config para
   trocar por ambiente facilmente.
+- **Criação de conta (Google)**: após o login com Google, se o token não tiver
+  `custom:tenantId`, mostre a tela de criação de organização. Valide o nome em
+  tempo real com `GET /organizations/check-name?name=…` (debounce) e habilite
+  o botão "Criar" apenas quando `available: true`. Ao criar
+  (`POST /organizations`), o usuário vira admin — reautentique para obter o
+  novo `custom:tenantId` no token.
+- **Gerenciar membros**: se o usuário for admin, exiba a tela de membros
+  (`GET /members`), com convite por email (`POST /members/invite`) e remoção
+  (`DELETE /members/{email}`). Não-admin veem a lista em modo leitura.
 - **Dropdowns de departamento/tags**: popule os seletores de filtro (chat) e
   de tags (upload) a partir de `GET /catalog/departments` e `GET /catalog/tags`.
   Não deixe o usuário digitar tags livres quando o catálogo estiver populado.
@@ -510,7 +671,7 @@ curl -X DELETE https://k46nbxrrl0.execute-api.us-east-1.amazonaws.com/catalog/ta
 
 ---
 
-## 9. Fluxo completo de exemplo (upload → listar → deletar)
+## 10. Fluxo completo de exemplo (upload → listar → deletar)
 
 ```bash
 # 1. Login e captura do ID token (via UI ou CLI)
