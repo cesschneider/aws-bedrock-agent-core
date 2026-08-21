@@ -39,6 +39,8 @@ export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
    * no dev test user is created (deploy still succeeds).
    */
   devTestUserPassword?: string;
+  /** Supabase project ref (Lovable Cloud) — enables dual-issuer JWT validation. */
+  supabaseProjectRef?: string;
 }
 
 /**
@@ -174,6 +176,8 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
       agentId: this.ragAgent.agent.attrAgentId,
       agentAliasId: this.ragAgent.agentAlias.attrAgentAliasId,
       knowledgeBaseId: this.knowledgeBase.knowledgeBase.attrKnowledgeBaseId,
+      supabaseProjectRef: props.supabaseProjectRef,
+      tenantMembershipTable: this.tenantMembership.table,
     });
 
     this.uploadApi = new UploadApi(this, "UploadApi", {

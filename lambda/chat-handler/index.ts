@@ -27,12 +27,21 @@ const agentId = process.env.AGENT_ID ?? "";
 const agentAliasId = process.env.AGENT_ALIAS_ID ?? "";
 const knowledgeBaseId = process.env.KNOWLEDGE_BASE_ID ?? "";
 
-// Initialize JWT validator at cold-start
+// Initialize JWT validator at cold-start (dual issuer: Cognito + Supabase)
 const region = process.env.AWS_REGION ?? "us-east-1";
 const userPoolId = process.env.COGNITO_USER_POOL_ID ?? "";
 const clientId = process.env.COGNITO_CLIENT_ID ?? "";
+const supabaseProjectRef = process.env.SUPABASE_PROJECT_REF ?? "";
+const membershipTableName = process.env.TENANT_MEMBERSHIP_TABLE_NAME ?? "";
 if (userPoolId && clientId) {
-  initAuth(region, userPoolId, clientId);
+  initAuth({
+    region,
+    userPoolId,
+    clientId,
+    supabaseProjectRef: supabaseProjectRef || undefined,
+    membershipTableName: membershipTableName || undefined,
+    dynamo,
+  });
 }
 
 interface ChatRequest {
