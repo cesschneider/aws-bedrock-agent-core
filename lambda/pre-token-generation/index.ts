@@ -4,7 +4,6 @@ import {
   namespacedDepartment,
   tenantOrgWide,
 } from "../common/auth";
-import { resolveTenantId as resolveTenantIdFromRegistry } from "../common/tenant-registry";
 import { resolveTenantFromMembership } from "../common/membership-store";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import type { GoogleAdminGroupsFetcher as GoogleAdminGroupsFetcherType } from "./google-admin-groups-fetcher";
@@ -15,13 +14,12 @@ export interface GroupsFetcher {
 }
 
 /**
- * Resolves a user's tenant (organization) ID from their email. The default
- * implementation derives the tenant from the email domain; STORY-B2 replaces
- * it with a registry-backed resolver that maps domain → canonical tenantId
- * and fails closed on unknown domains.
+ * Resolves a user's tenant (organization) ID from their email. Returns
+ * `undefined` when the user has no active membership yet (an unassigned
+ * Google user who has not created or joined an organization).
  */
 export interface TenantResolver {
-  resolveTenantId(email: string): Promise<string>;
+  resolveTenantId(email: string): Promise<string | undefined>;
 }
 
 /** Fixed tenant for native (non-Google-federated) users, e.g. the dev CLI user. */
@@ -29,8 +27,8 @@ export const DEV_TENANT = "dev";
 
 /**
  * Default tenant resolver: the tenant IS the email domain (lowercased).
- * `alice@acme.com` → `acme.com`. Replaced by the registry-backed resolver in
- * STORY-B2, which adds the fail-closed-on-unknown-domain guarantee.
+ * `alice@acme.com` → `acme.com`. Retained for tests and the pre-membership
+ * fallback; the production path uses `MembershipTenantResolver`.
  */
 export class DomainTenantResolver implements TenantResolver {
   async resolveTenantId(email: string): Promise<string> {
@@ -39,42 +37,21 @@ export class DomainTenantResolver implements TenantResolver {
 }
 
 /**
- * Registry-backed tenant resolver (STORY-B2). Resolves the email domain
- * against the tenant registry and fails closed on unknown/unactivated
- * domains. This is the production resolver; `DomainTenantResolver` remains
- * for tests and the pre-registry fallback.
- */
-export class RegistryTenantResolver implements TenantResolver {
-  constructor(
-    private readonly dynamo: DynamoDBClient,
-    private readonly tableName: string
-  ) {}
-
-  async resolveTenantId(email: string): Promise<string> {
-    const domain = domainFromEmail(email);
-    return resolveTenantIdFromRegistry(this.dynamo, this.tableName, domain);
-  }
-}
-
-/**
- * Membership-first tenant resolver (multi-user support). Resolves the user's
- * tenant from their ACTIVE membership record; falls back to the domain→tenant
- * registry for the provisioning admin (whose membership is created at
- * activation) and for any user whose membership has not yet been recorded.
- * Fails closed when neither source resolves the user.
+ * Membership-only tenant resolver (multi-user support). Resolves the user's
+ * tenant from their ACTIVE membership record. Returns `undefined` when the
+ * user has no active membership — the user is unassigned and may create or
+ * join an organization. There is no domain fallback: organization membership
+ * is the sole source of tenant identity.
  */
 export class MembershipTenantResolver implements TenantResolver {
   constructor(
     private readonly dynamo: DynamoDBClient,
-    private readonly membershipTableName: string,
-    private readonly registryTableName: string
+    private readonly membershipTableName: string
   ) {}
 
-  async resolveTenantId(email: string): Promise<string> {
+  async resolveTenantId(email: string): Promise<string | undefined> {
     const member = await resolveTenantFromMembership(this.dynamo, this.membershipTableName, email);
-    if (member) return member.tenantId;
-    const domain = domainFromEmail(email);
-    return resolveTenantIdFromRegistry(this.dynamo, this.registryTableName, domain);
+    return member?.tenantId;
   }
 }
 
@@ -133,8 +110,10 @@ export async function buildGroupOverride(
     throw new Error("Pre-token-generation event is missing the user's email attribute");
   }
 
-  // Tenant: Google-federated users resolve via the tenant resolver (email
-  // domain); native users get the fixed dev tenant.
+  // Tenant: Google-federated users resolve via the membership resolver;
+  // native users get the fixed dev tenant. An unassigned Google user (no
+  // active membership) resolves to `undefined` — they authenticate but carry
+  // no tenant claim, so they can create/join an org but cannot retrieve data.
   const tenantId = isGoogleFederatedUser(event)
     ? await tenantResolver.resolveTenantId(email)
     : DEV_TENANT;
@@ -145,21 +124,30 @@ export async function buildGroupOverride(
     ? mapWorkspaceGroupsToDepartments(await groupsFetcher.fetchGroupsForUser(email))
     : nativeDepartments(event);
 
-  const scopedDepartments = scopeDepartmentsToTenant(tenantId, flatDepartments);
+  // An unassigned user has no tenant, hence no scoped departments and no
+  // tenant claim. They still get a valid token (to call the organizations
+  // API), but no retrieval scope.
+  const scopedDepartments = tenantId
+    ? scopeDepartmentsToTenant(tenantId, flatDepartments)
+    : [];
+
+  const claimsToAddOrOverride: Record<string, string> = {
+    // API Gateway's HTTP API JWT authorizer drops ARRAY claims (it only
+    // forwards string claims), so `cognito:groups` never reaches the
+    // upload-handler Lambda. Emit the departments as a comma-separated
+    // STRING custom claim too, which survives the gateway.
+    "custom:departments": scopedDepartments.join(","),
+  };
+  if (tenantId) {
+    // Emit the tenant as a custom claim so downstream (jwt-auth) can scope
+    // retrieval. Custom claims must be prefixed with "custom:".
+    claimsToAddOrOverride["custom:tenantId"] = tenantId;
+  }
 
   event.response = {
     claimsAndScopeOverrideDetails: {
-      // Emit the tenant as a custom claim so downstream (jwt-auth) can scope
-      // retrieval. Custom claims must be prefixed with "custom:".
       idTokenGeneration: {
-        claimsToAddOrOverride: {
-          "custom:tenantId": tenantId,
-          // API Gateway's HTTP API JWT authorizer drops ARRAY claims (it only
-          // forwards string claims), so `cognito:groups` never reaches the
-          // upload-handler Lambda. Emit the departments as a comma-separated
-          // STRING custom claim too, which survives the gateway.
-          "custom:departments": scopedDepartments.join(","),
-        },
+        claimsToAddOrOverride,
       },
       groupOverrideDetails: {
         groupsToOverride: scopedDepartments,
@@ -201,17 +189,13 @@ export const handler = async (
     fetchGroupsForUser: async (email) => (await getGoogleAdminGroupsFetcher()).fetchGroupsForUser(email),
   };
 
-  // Tenant resolution order: membership first (multi-user support), then the
-  // domain→tenant registry. When a membership table is configured, use the
-  // membership-first resolver; otherwise fall back to the registry resolver
-  // (or the domain resolver when no registry is configured either).
-  const registryTable = process.env.TENANT_REGISTRY_TABLE_NAME ?? "";
+  // Tenant resolution is membership-only (multi-user support). When a
+  // membership table is configured, use the membership resolver; otherwise
+  // fall back to the domain resolver (tests / pre-membership).
   const membershipTable = process.env.TENANT_MEMBERSHIP_TABLE_NAME ?? "";
   const tenantResolver: TenantResolver = membershipTable
-    ? new MembershipTenantResolver(new DynamoDBClient({}), membershipTable, registryTable)
-    : registryTable
-      ? new RegistryTenantResolver(new DynamoDBClient({}), registryTable)
-      : new DomainTenantResolver();
+    ? new MembershipTenantResolver(new DynamoDBClient({}), membershipTable)
+    : new DomainTenantResolver();
 
   return buildGroupOverride(event, fetcher, tenantResolver);
 };

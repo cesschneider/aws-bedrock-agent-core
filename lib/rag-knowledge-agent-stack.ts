@@ -13,8 +13,6 @@ import { KnowledgeBase } from "./constructs/knowledge-base";
 import { RagAgent } from "./constructs/agent";
 import { UploadApi } from "./constructs/upload-api";
 import { VectorIndex } from "./constructs/vector-index";
-import { TenantRegistry } from "./constructs/tenant-registry";
-import { TenantProvisioningApi } from "./constructs/tenant-provisioning-api";
 import { DocumentRegistry } from "./constructs/document-registry";
 import { DocumentsApi } from "./constructs/documents-api";
 import { DocsApi } from "./constructs/docs-api";
@@ -22,6 +20,8 @@ import { TenantCatalog } from "./constructs/tenant-catalog";
 import { CatalogApi } from "./constructs/catalog-api";
 import { TenantMembership } from "./constructs/tenant-membership";
 import { MembersApi } from "./constructs/members-api";
+import { Organization } from "./constructs/organization";
+import { OrganizationsApi } from "./constructs/organizations-api";
 
 export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
   /** Deployment environment slug: dev | stg | prd */
@@ -59,8 +59,6 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
   public readonly ragAgent: RagAgent;
   public readonly uploadApi: UploadApi;
   public readonly vectorIndex: VectorIndex;
-  public readonly tenantRegistry: TenantRegistry;
-  public readonly tenantProvisioningApi: TenantProvisioningApi;
   public readonly documentRegistry: DocumentRegistry;
   public readonly documentsApi: DocumentsApi;
   public readonly docsApi: DocsApi;
@@ -68,6 +66,8 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
   public readonly catalogApi: CatalogApi;
   public readonly tenantMembership: TenantMembership;
   public readonly membersApi: MembersApi;
+  public readonly organization: Organization;
+  public readonly organizationsApi: OrganizationsApi;
 
   constructor(scope: Construct, id: string, props: RagKnowledgeAgentStackProps) {
     super(scope, id, props);
@@ -127,23 +127,17 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
       envName: this.envName,
     });
 
-    this.tenantRegistry = new TenantRegistry(this, "TenantRegistry", {
-      envName: this.envName,
-    });
-
     // Email → tenant membership registry (multi-user support). The first user
-    // of a tenant (the provisioning admin) is created here at activation; the
-    // members API manages invitations and membership.
+    // of a tenant (the org-creating admin) is created here at org creation;
+    // the members API manages invitations and membership.
     this.tenantMembership = new TenantMembership(this, "TenantMembership", {
       envName: this.envName,
     });
 
-    // Self-service provisioning (STORY-B2): public HTTP API for sign-up and
-    // admin-email confirmation, writing to the tenant registry.
-    this.tenantProvisioningApi = new TenantProvisioningApi(this, "TenantProvisioningApi", {
+    // Organization registry (name-based org creation). Replaces the
+    // domain→tenant registry: no domain action, no email-verification token.
+    this.organization = new Organization(this, "Organization", {
       envName: this.envName,
-      tenantRegistryTable: this.tenantRegistry.table,
-      tenantMembershipTable: this.tenantMembership.table,
     });
 
     // Google OAuth client ID/secret and the Workspace admin service account
@@ -167,7 +161,6 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
       googleClientSecret,
       googleServiceAccountKeyParam: `/rag-knowledge-agent/${this.envName}/google-service-account-key`,
       googleWorkspaceAdminEmail: `admin@${this.envName}.pending-setup.invalid`,
-      tenantRegistryTable: this.tenantRegistry.table,
       tenantMembershipTable: this.tenantMembership.table,
       devTestUserPassword: props.devTestUserPassword,
     });
@@ -226,14 +219,12 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
       handler: "handler",
       environment: {
         TENANT_CATALOG_TABLE_NAME: this.tenantCatalog.table.tableName,
-        TENANT_REGISTRY_TABLE_NAME: this.tenantRegistry.table.tableName,
         TENANT_MEMBERSHIP_TABLE_NAME: this.tenantMembership.table.tableName,
         ENV_NAME: this.envName,
       },
       timeout: cdk.Duration.seconds(10),
     });
     this.tenantCatalog.table.grantReadWriteData(catalogHandler);
-    this.tenantRegistry.table.grantReadData(catalogHandler);
     this.tenantMembership.table.grantReadData(catalogHandler);
 
     this.catalogApi = new CatalogApi(this, "CatalogApi", {
@@ -260,6 +251,28 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
     this.membersApi = new MembersApi(this, "MembersApi", {
       envName: this.envName,
       membersHandler,
+      userPool: this.identity.userPool,
+      userPoolClient: this.identity.userPoolClient,
+    });
+
+    // Name-based organization creation (Google-account flow): check name
+    // availability and create an org + admin membership.
+    const organizationsHandler = new lambdaNode.NodejsFunction(this, "OrganizationsHandler", {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      entry: path.join(__dirname, "../lambda/organizations-handler/index.ts"),
+      handler: "handler",
+      environment: {
+        ORGANIZATION_TABLE_NAME: this.organization.table.tableName,
+        TENANT_MEMBERSHIP_TABLE_NAME: this.tenantMembership.table.tableName,
+      },
+      timeout: cdk.Duration.seconds(10),
+    });
+    this.organization.table.grantReadWriteData(organizationsHandler);
+    this.tenantMembership.table.grantReadWriteData(organizationsHandler);
+
+    this.organizationsApi = new OrganizationsApi(this, "OrganizationsApi", {
+      envName: this.envName,
+      organizationsHandler,
       userPool: this.identity.userPool,
       userPoolClient: this.identity.userPoolClient,
     });
