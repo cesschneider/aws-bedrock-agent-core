@@ -214,6 +214,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
       environment: {
         TENANT_CATALOG_TABLE_NAME: this.tenantCatalog.table.tableName,
         TENANT_REGISTRY_TABLE_NAME: this.tenantRegistry.table.tableName,
+        ENV_NAME: this.envName,
       },
       timeout: cdk.Duration.seconds(10),
     });
