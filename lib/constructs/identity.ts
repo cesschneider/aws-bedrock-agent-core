@@ -24,8 +24,6 @@ export interface IdentityProps {
   googleServiceAccountKeyParam: string;
   /** Email of a Google Workspace super admin the service account impersonates. */
   googleWorkspaceAdminEmail: string;
-  /** Tenant registry table — enables registry-backed tenant resolution. */
-  tenantRegistryTable?: dynamodb.Table;
   /** Tenant membership table — enables membership-first tenant resolution. */
   tenantMembershipTable?: dynamodb.Table;
   /**
@@ -75,7 +73,6 @@ export class Identity extends Construct {
       environment: {
         GOOGLE_SERVICE_ACCOUNT_KEY_PARAM: props.googleServiceAccountKeyParam,
         GOOGLE_WORKSPACE_ADMIN_EMAIL: props.googleWorkspaceAdminEmail,
-        TENANT_REGISTRY_TABLE_NAME: props.tenantRegistryTable?.tableName ?? "",
         TENANT_MEMBERSHIP_TABLE_NAME: props.tenantMembershipTable?.tableName ?? "",
       },
       timeout: cdk.Duration.seconds(10),
@@ -95,8 +92,6 @@ export class Identity extends Construct {
       })
     );
 
-    // Read access to the tenant registry for domain → tenant resolution.
-    props.tenantRegistryTable?.grantReadData(preTokenGeneration);
     // Read access to the membership table for membership-first resolution.
     props.tenantMembershipTable?.grantReadData(preTokenGeneration);
 
