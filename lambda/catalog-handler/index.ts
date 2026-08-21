@@ -35,6 +35,7 @@ import { domainFromEmail } from "../common/auth";
 const dynamo = new DynamoDBClient({});
 const tableName = process.env.TENANT_CATALOG_TABLE_NAME ?? "";
 const tenantRegistryTable = process.env.TENANT_REGISTRY_TABLE_NAME ?? "";
+const envName = process.env.ENV_NAME ?? "";
 
 function json(statusCode: number, body: unknown): APIGatewayProxyStructuredResultV2 {
   return { statusCode, headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
@@ -60,8 +61,18 @@ function authFromEvent(event: APIGatewayProxyEventV2WithJWTAuthorizer): AuthCont
  * adminEmail. The tenant registry is keyed by email domain, so we derive the
  * domain from the caller's email. Fails closed: if the tenant record is
  * missing, no one is admin.
+ *
+ * Exception: the `dev` tenant is a native-user test tenant (no registry
+ * record, single test user) that only exists in non-prd environments. Any
+ * authenticated member of the `dev` tenant is treated as admin so the admin
+ * UI can be exercised end-to-end in dev/stg.
  */
 async function isAdmin(tenantId: string, email: string): Promise<boolean> {
+  // The `dev` tenant is a native-user test tenant (no registry record) that
+  // only exists in non-prd environments. Any authenticated member of the
+  // `dev` tenant is treated as admin so the admin UI can be exercised
+  // end-to-end in dev/stg. Gated on ENV_NAME so it can never apply in prd.
+  if (tenantId === "dev" && envName !== "prd") return true;
   if (!tenantRegistryTable || !email) return false;
   let domain: string;
   try {
