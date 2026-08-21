@@ -24,6 +24,12 @@ const hasAwsContext = Boolean(process.env.CDK_DEFAULT_ACCOUNT);
 // hard-fail until the secret exists, which would block all dev deploys.
 const devTestUserPassword = nonEmptyContext(app, "dev-test-user-password");
 
+// Supabase project ref (Lovable Cloud) — public identifier, not a secret.
+// Enables dual-issuer JWT validation in the chat-handler. Passed via CDK
+// context (`-c supabase-project-ref=…`) or the SUPABASE_PROJECT_REF env var.
+const supabaseProjectRef =
+  nonEmptyContext(app, "supabase-project-ref") ?? process.env.SUPABASE_PROJECT_REF;
+
 new RagKnowledgeAgentStack(app, `RagKnowledgeAgent-${envName}`, {
   envName,
   env: {
@@ -32,6 +38,7 @@ new RagKnowledgeAgentStack(app, `RagKnowledgeAgent-${envName}`, {
   },
   ...(!hasAwsContext && { googleClientSecretOverride: "ci-synth-placeholder" }),
   ...(devTestUserPassword && { devTestUserPassword }),
+  ...(supabaseProjectRef && { supabaseProjectRef }),
 });
 
 function nonEmptyContext(app: cdk.App, key: string): string | undefined {
