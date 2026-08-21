@@ -4,6 +4,7 @@ import * as s3 from "aws-cdk-lib/aws-s3";
 import * as lambdaNode from "aws-cdk-lib/aws-lambda-nodejs";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as path from "path";
 
 function retentionFor(envName: string): logs.RetentionDays {
@@ -12,6 +13,8 @@ function retentionFor(envName: string): logs.RetentionDays {
 
 export interface UploadPipelineProps {
   envName: string;
+  /** Document registry table the upload-handler writes PENDING records to. */
+  registryTable: dynamodb.Table;
 }
 
 /**
@@ -64,6 +67,7 @@ export class UploadPipeline extends Construct {
       handler: "handler",
       environment: {
         UPLOAD_BUCKET_NAME: this.bucket.bucketName,
+        DOCUMENT_REGISTRY_TABLE_NAME: props.registryTable.tableName,
       },
       timeout: cdk.Duration.seconds(10),
       logGroup,
@@ -72,6 +76,8 @@ export class UploadPipeline extends Construct {
     // s3:PutObject only — the Lambda signs presigned POSTs for uploads, it
     // never reads or deletes objects itself (least privilege).
     this.bucket.grantPut(this.uploadHandler);
+    // Write access to the document registry (PENDING records at upload time).
+    props.registryTable.grantWriteData(this.uploadHandler);
   }
 }
 

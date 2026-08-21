@@ -4,8 +4,10 @@ import type {
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
 import { S3Client } from "@aws-sdk/client-s3";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 import { ORG_WIDE, namespacedDepartment, parseDepartmentClaims, tenantOrgWide, userCanAccessDepartment } from "../common/auth";
+import { putDocument, type DocumentRecord } from "../common/document-store";
 
 /** Bedrock KB default-supported office document types (spec Section 2, Goals). */
 const ALLOWED_CONTENT_TYPES = new Set([
@@ -19,11 +21,14 @@ const ALLOWED_CONTENT_TYPES = new Set([
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024; // 50 MB
 const MIN_UPLOAD_BYTES = 1; // reject 0-byte files (Eng review addition)
 const PRESIGNED_POST_EXPIRY_SECONDS = 300;
+const MAX_TAGS = 20;
+const MAX_TAG_LENGTH = 64;
 
 export interface UploadRequestBody {
   department: string;
   filename: string;
   contentType: string;
+  tags?: string[];
 }
 
 export class UploadValidationError extends Error {
@@ -31,6 +36,24 @@ export class UploadValidationError extends Error {
     super(message);
     this.name = "UploadValidationError";
   }
+}
+
+function normalizeTags(raw: unknown): string[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) {
+    throw new UploadValidationError("tags must be an array of strings");
+  }
+  const tags = raw.map((t) => (typeof t === "string" ? t.trim() : "")).filter((t) => t.length > 0);
+  if (tags.length > MAX_TAGS) {
+    throw new UploadValidationError(`too many tags (max ${MAX_TAGS})`);
+  }
+  for (const tag of tags) {
+    if (tag.length > MAX_TAG_LENGTH) {
+      throw new UploadValidationError(`tag "${tag}" exceeds ${MAX_TAG_LENGTH} characters`);
+    }
+  }
+  // Dedupe, preserving order.
+  return Array.from(new Set(tags));
 }
 
 function parseBody(rawBody: string | undefined): UploadRequestBody {
@@ -58,20 +81,27 @@ function parseBody(rawBody: string | undefined): UploadRequestBody {
       `contentType "${contentType}" is not supported (allowed: pdf, docx, txt, pptx)`
     );
   }
-  return { department, filename, contentType };
+  const tags = normalizeTags(parsed.tags);
+  return { department, filename, contentType, tags };
 }
 
-export function buildObjectKey(tenantId: string, department: string, filename: string): string {
+export function buildObjectKey(tenantId: string, department: string, documentId: string, filename: string): string {
   // Reject path traversal / separator injection in the original filename —
   // it becomes part of the S3 key, never trust it verbatim.
   const safeFilename = filename.replace(/[/\\]/g, "_");
-  return `${tenantId}/${department}/${randomUUID()}-${safeFilename}`;
+  return `${tenantId}/${department}/${documentId}-${safeFilename}`;
+}
+
+export interface UploadDependencies {
+  s3Client: S3Client;
+  dynamo: DynamoDBClient;
+  bucketName: string;
+  registryTableName: string;
 }
 
 export async function handleUploadRequest(
   event: APIGatewayProxyEventV2WithJWTAuthorizer,
-  s3Client: S3Client,
-  bucketName: string
+  deps: UploadDependencies
 ): Promise<APIGatewayProxyStructuredResultV2> {
   let body: UploadRequestBody;
   try {
@@ -104,8 +134,6 @@ export async function handleUploadRequest(
   // Server-side enforcement — a user cannot upload into a department they
   // don't belong to, except org-wide, which anyone in the tenant may upload
   // to (spec Section 4.2 / Section 6, Security Considerations).
-  // The body carries the human-facing department name; the user's claims are
-  // tenant-namespaced, so namespace the target before the access check.
   const targetDepartment =
     body.department === ORG_WIDE
       ? namespacedDepartment(tenantId.trim(), ORG_WIDE)
@@ -117,10 +145,31 @@ export async function handleUploadRequest(
     };
   }
 
-  const key = buildObjectKey(tenantId.trim(), body.department, body.filename);
+  const documentId = randomUUID();
+  const key = buildObjectKey(tenantId.trim(), body.department, documentId, body.filename);
 
-  const { url, fields } = await createPresignedPost(s3Client, {
-    Bucket: bucketName,
+  // Persist a PENDING registry record so the document is immediately visible
+  // to the list/get API, even before ingestion completes. kb-sync-trigger
+  // updates size + status to INDEXED once the object is observed.
+  const uploadedBy = claims["cognito:username"] ?? claims["sub"] ?? "unknown";
+  const record: DocumentRecord = {
+    tenantId: tenantId.trim(),
+    documentId,
+    department: targetDepartment,
+    plainDepartment: body.department,
+    filename: body.filename,
+    contentType: body.contentType,
+    sizeBytes: 0,
+    tags: body.tags ?? [],
+    status: "PENDING",
+    s3Key: key,
+    uploadedBy,
+    uploadedAt: new Date().toISOString(),
+  };
+  await putDocument(deps.dynamo, deps.registryTableName, record);
+
+  const { url, fields } = await createPresignedPost(deps.s3Client, {
+    Bucket: deps.bucketName,
     Key: key,
     Conditions: [
       ["content-length-range", MIN_UPLOAD_BYTES, MAX_UPLOAD_BYTES],
@@ -130,18 +179,21 @@ export async function handleUploadRequest(
       "Content-Type": body.contentType,
       "x-amz-meta-tenant-id": tenantId.trim(),
       "x-amz-meta-department": body.department,
+      "x-amz-meta-document-id": documentId,
     },
     Expires: PRESIGNED_POST_EXPIRY_SECONDS,
   });
 
   return {
     statusCode: 200,
-    body: JSON.stringify({ url, fields, key }),
+    body: JSON.stringify({ url, fields, key, documentId }),
   };
 }
 
 const s3 = new S3Client({});
+const dynamo = new DynamoDBClient({});
 const BUCKET_NAME = process.env.UPLOAD_BUCKET_NAME ?? "";
+const REGISTRY_TABLE_NAME = process.env.DOCUMENT_REGISTRY_TABLE_NAME ?? "";
 
 export const handler = async (
   event: APIGatewayProxyEventV2WithJWTAuthorizer
@@ -149,6 +201,13 @@ export const handler = async (
   if (!BUCKET_NAME) {
     throw new Error("UPLOAD_BUCKET_NAME environment variable is not set");
   }
-  return handleUploadRequest(event, s3, BUCKET_NAME);
+  if (!REGISTRY_TABLE_NAME) {
+    throw new Error("DOCUMENT_REGISTRY_TABLE_NAME environment variable is not set");
+  }
+  return handleUploadRequest(event, {
+    s3Client: s3,
+    dynamo,
+    bucketName: BUCKET_NAME,
+    registryTableName: REGISTRY_TABLE_NAME,
+  });
 };
-

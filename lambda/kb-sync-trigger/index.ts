@@ -7,6 +7,7 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { BedrockAgentClient, StartIngestionJobCommand } from "@aws-sdk/client-bedrock-agent";
 import { namespacedDepartment } from "../common/auth";
+import { documentIdFromKey, getDocument, markDocumentIndexed } from "../common/document-store";
 
 /** Skip re-ingesting metadata sidecars we just wrote ourselves (would otherwise loop). */
 const METADATA_SUFFIX = ".metadata.json";
@@ -19,6 +20,7 @@ export interface KbSyncDependencies {
   dynamo: DynamoDBClient;
   bedrockAgent: BedrockAgentClient;
   dedupTableName: string;
+  registryTableName: string;
   knowledgeBaseId: string;
   dataSourceId: string;
 }
@@ -89,18 +91,26 @@ async function writeMetadataSidecar(
   bucket: string,
   objectKey: string,
   tenantId: string,
-  department: string
+  department: string,
+  tags: string[]
 ): Promise<void> {
   // The S3 key carries the human-facing department name (e.g. `engineering`),
   // but the metadata sidecar must store the tenant-NAMESPACED form
   // (`acme-com:engineering`) so it matches the retrieval filter's
   // `department IN (...)` clause (multi-tenant design §3, §4.2).
   const namespaced = namespacedDepartment(tenantId, department);
+  const metadataAttributes: Record<string, string | string[]> = {
+    tenantId,
+    department: namespaced,
+  };
+  if (tags.length > 0) {
+    metadataAttributes.tags = tags;
+  }
   await s3.send(
     new PutObjectCommand({
       Bucket: bucket,
       Key: `${objectKey}${METADATA_SUFFIX}`,
-      Body: JSON.stringify({ metadataAttributes: { tenantId, department: namespaced } }),
+      Body: JSON.stringify({ metadataAttributes }),
       ContentType: "application/json",
     })
   );
@@ -110,6 +120,7 @@ async function processRecord(record: S3EventRecord, deps: KbSyncDependencies): P
   const bucket = record.s3.bucket.name;
   const objectKey = decodeURIComponent(record.s3.object.key.replace(/\+/g, " "));
   const etag = record.s3.object.eTag;
+  const sizeBytes = record.s3.object.size ?? 0;
 
   if (objectKey.endsWith(METADATA_SUFFIX)) {
     return; // our own sidecar write triggered this event — ignore
@@ -122,7 +133,24 @@ async function processRecord(record: S3EventRecord, deps: KbSyncDependencies): P
 
   const tenantId = tenantFromKey(objectKey);
   const department = departmentFromKey(objectKey);
-  await writeMetadataSidecar(deps.s3, bucket, objectKey, tenantId, department);
+  const documentId = documentIdFromKey(objectKey);
+
+  // Update the registry record (written at upload time) with the real size
+  // and INDEXED status. Tags are read from the registry so the sidecar and
+  // the list/get API stay consistent.
+  const existing = await getDocument(deps.dynamo, deps.registryTableName, tenantId, documentId);
+  const tags = existing?.tags ?? [];
+
+  await writeMetadataSidecar(deps.s3, bucket, objectKey, tenantId, department, tags);
+
+  await markDocumentIndexed(
+    deps.dynamo,
+    deps.registryTableName,
+    tenantId,
+    documentId,
+    sizeBytes,
+    new Date().toISOString()
+  );
 
   await deps.bedrockAgent.send(
     new StartIngestionJobCommand({
@@ -149,13 +177,21 @@ const bedrockAgent = new BedrockAgentClient({});
 
 export const handler = async (event: S3Event): Promise<void> => {
   const dedupTableName = process.env.DEDUP_TABLE_NAME ?? "";
+  const registryTableName = process.env.DOCUMENT_REGISTRY_TABLE_NAME ?? "";
   const knowledgeBaseId = process.env.KNOWLEDGE_BASE_ID ?? "";
   const dataSourceId = process.env.DATA_SOURCE_ID ?? "";
-  if (!dedupTableName || !knowledgeBaseId || !dataSourceId) {
+  if (!dedupTableName || !registryTableName || !knowledgeBaseId || !dataSourceId) {
     throw new Error(
-      "DEDUP_TABLE_NAME, KNOWLEDGE_BASE_ID, and DATA_SOURCE_ID environment variables are required"
+      "DEDUP_TABLE_NAME, DOCUMENT_REGISTRY_TABLE_NAME, KNOWLEDGE_BASE_ID, and DATA_SOURCE_ID environment variables are required"
     );
   }
-  await handleS3Event(event, { s3, dynamo, bedrockAgent, dedupTableName, knowledgeBaseId, dataSourceId });
+  await handleS3Event(event, {
+    s3,
+    dynamo,
+    bedrockAgent,
+    dedupTableName,
+    registryTableName,
+    knowledgeBaseId,
+    dataSourceId,
+  });
 };
-
