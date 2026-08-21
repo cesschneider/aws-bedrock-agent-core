@@ -48,6 +48,22 @@ describe("buildRetrievalFilter", () => {
     const filter = buildRetrievalFilter("globex", ["acme:dept-eng"]);
     expect(filter.andAll![0].equals!.value).toBe("globex");
   });
+
+  it("adds a tags IN clause when tags are provided", () => {
+    const filter = buildRetrievalFilter("acme", ["acme:dept-eng"], ["finance", "q3"]);
+    expect(filter.andAll).toHaveLength(3);
+    expect(filter.andAll![2].in).toEqual({ key: "tags", value: ["finance", "q3"] });
+  });
+
+  it("omits the tags clause when tags are empty or absent", () => {
+    expect(buildRetrievalFilter("acme", ["acme:dept-eng"], []).andAll).toHaveLength(2);
+    expect(buildRetrievalFilter("acme", ["acme:dept-eng"], undefined).andAll).toHaveLength(2);
+  });
+
+  it("normalizes tags (trim + dedupe) and drops blanks", () => {
+    const filter = buildRetrievalFilter("acme", ["acme:dept-eng"], [" finance ", "finance", "", "q3"]);
+    expect(filter.andAll![2].in!.value).toEqual(["finance", "q3"]);
+  });
 });
 
 describe("buildKnowledgeBaseConfiguration", () => {

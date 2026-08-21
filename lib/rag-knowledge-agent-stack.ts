@@ -17,6 +17,7 @@ import { TenantRegistry } from "./constructs/tenant-registry";
 import { TenantProvisioningApi } from "./constructs/tenant-provisioning-api";
 import { DocumentRegistry } from "./constructs/document-registry";
 import { DocumentsApi } from "./constructs/documents-api";
+import { DocsApi } from "./constructs/docs-api";
 
 export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
   /** Deployment environment slug: dev | stg | prd */
@@ -58,6 +59,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
   public readonly tenantProvisioningApi: TenantProvisioningApi;
   public readonly documentRegistry: DocumentRegistry;
   public readonly documentsApi: DocumentsApi;
+  public readonly docsApi: DocsApi;
 
   constructor(scope: Construct, id: string, props: RagKnowledgeAgentStackProps) {
     super(scope, id, props);
@@ -185,6 +187,11 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
       userPoolClient: this.identity.userPoolClient,
       documentsBucket: this.uploadPipeline.bucket,
       registryTable: this.documentRegistry.table,
+    });
+
+    // Public (no-auth) API documentation endpoint.
+    this.docsApi = new DocsApi(this, "DocsApi", {
+      envName: this.envName,
     });
 
     // Surface the values the chat CLI and the upload guide need, so they can

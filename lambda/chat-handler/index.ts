@@ -38,6 +38,44 @@ if (userPoolId && clientId) {
 interface ChatRequest {
   message: string;
   sessionId?: string;
+  /** Optional subset of the caller's departments to narrow retrieval to. */
+  departments?: string[];
+  /** Optional tags to narrow retrieval to documents carrying any of them. */
+  tags?: string[];
+}
+
+/**
+ * Validates and normalizes the caller-supplied department filter. The caller
+ * may only narrow to departments they actually belong to (the union of their
+ * claims + org-wide). Requesting a department they don't belong to is
+ * rejected — the filter can only ever restrict, never expand, access.
+ */
+function resolveDepartmentFilter(
+  requested: string[] | undefined,
+  allowed: string[]
+): string[] {
+  if (!requested || requested.length === 0) {
+    return allowed;
+  }
+  const allowedSet = new Set(allowed);
+  const normalized = Array.from(new Set(requested.map((d) => d.trim()).filter((d) => d.length > 0)));
+  for (const d of normalized) {
+    if (!allowedSet.has(d)) {
+      throw Object.assign(new Error(`Not a member of department "${d}"`), { statusCode: 403 });
+    }
+  }
+  return normalized;
+}
+
+function normalizeTags(raw: unknown): string[] | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!Array.isArray(raw)) {
+    throw Object.assign(new Error("tags must be an array of strings"), { statusCode: 400 });
+  }
+  const tags = Array.from(
+    new Set(raw.map((t) => (typeof t === "string" ? t.trim() : "")).filter((t) => t.length > 0))
+  );
+  return tags.length > 0 ? tags : undefined;
 }
 
 export async function handler(
@@ -51,10 +89,15 @@ export async function handler(
     if (!event.body) {
       return { statusCode: 400, body: JSON.stringify({ error: "Missing request body" }) };
     }
-    const { message, sessionId } = JSON.parse(event.body) as ChatRequest;
+    const { message, sessionId, departments, tags } = JSON.parse(event.body) as ChatRequest;
     if (!message || typeof message !== "string") {
       return { statusCode: 400, body: JSON.stringify({ error: "Missing or invalid 'message' field" }) };
     }
+
+    // Resolve the department filter (may only narrow to the caller's own
+    // departments) and the optional tag filter.
+    const departmentFilter = resolveDepartmentFilter(departments, auth.departments);
+    const tagFilter = normalizeTags(tags);
 
     const sid = sessionId ?? randomUUID();
     const turnId = `${new Date().toISOString()}#${randomUUID().slice(0, 8)}`;
@@ -84,7 +127,8 @@ export async function handler(
       sessionId: sid,
       message,
       tenantId: auth.tenantId,
-      departments: auth.departments,
+      departments: departmentFilter,
+      tags: tagFilter,
     })) {
       if (chunk.text) {
         answerParts.push(chunk.text);
