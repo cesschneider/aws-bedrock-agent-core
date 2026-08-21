@@ -100,6 +100,40 @@ describe("chat handler", () => {
     );
   });
 
+  it("narrows the department filter to a requested subset the caller belongs to", async () => {
+    mockInvokeAgent.mockReturnValue(agentStream([{ text: "ok" }]));
+    await handler(makeEvent({ message: "hi", departments: ["acme:dept-eng"] }));
+    expect(mockInvokeAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ departments: ["acme:dept-eng"] })
+    );
+  });
+
+  it("rejects a department filter the caller does not belong to (403)", async () => {
+    mockInvokeAgent.mockReturnValue(agentStream([{ text: "ok" }]));
+    const res = (await handler(
+      makeEvent({ message: "hi", departments: ["acme:dept-hr"] })
+    )) as APIGatewayProxyStructuredResultV2;
+    expect(res.statusCode).toBe(403);
+    expect(mockInvokeAgent).not.toHaveBeenCalled();
+  });
+
+  it("passes tags through to the agent invocation", async () => {
+    mockInvokeAgent.mockReturnValue(agentStream([{ text: "ok" }]));
+    await handler(makeEvent({ message: "hi", tags: ["finance", "q3"] }));
+    expect(mockInvokeAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ tags: ["finance", "q3"] })
+    );
+  });
+
+  it("rejects non-array tags (400)", async () => {
+    mockInvokeAgent.mockReturnValue(agentStream([{ text: "ok" }]));
+    const res = (await handler(
+      makeEvent({ message: "hi", tags: "finance" })
+    )) as APIGatewayProxyStructuredResultV2;
+    expect(res.statusCode).toBe(400);
+    expect(mockInvokeAgent).not.toHaveBeenCalled();
+  });
+
   it("omits citations the presigner rejects (revoked access)", async () => {
     mockPresignCitation.mockResolvedValue(null);
     mockInvokeAgent.mockReturnValue(

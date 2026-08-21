@@ -30,6 +30,8 @@ export interface AgentInvokeInput {
   message: string;
   tenantId: string;
   departments: string[];
+  /** Optional tag filter — narrows retrieval to documents carrying any of these tags. */
+  tags?: string[];
 }
 
 export interface AgentResponseChunk {
@@ -58,11 +60,14 @@ export class TenantScopeError extends Error {
 
 /**
  * Builds the mandatory retrieval filter. `tenantId` is non-negotiable; the
- * department list always includes the tenant's org-wide scope.
+ * department list always includes the tenant's org-wide scope. When `tags`
+ * is non-empty, an additional `tags IN (...)` clause narrows retrieval to
+ * documents carrying at least one of the requested tags.
  */
 export function buildRetrievalFilter(
   tenantId: string,
-  departments: string[]
+  departments: string[],
+  tags?: string[]
 ): RetrievalFilter {
   if (!tenantId || tenantId.trim().length === 0) {
     throw new TenantScopeError("tenantId is required for retrieval scoping");
@@ -75,12 +80,17 @@ export function buildRetrievalFilter(
     throw new TenantScopeError("department scope is empty (fail closed)");
   }
 
-  return {
-    andAll: [
-      { equals: { key: "tenantId", value: tenantId } },
-      { in: { key: "department", value: scopedDepartments } },
-    ],
-  };
+  const clauses: RetrievalFilter["andAll"] = [
+    { equals: { key: "tenantId", value: tenantId } },
+    { in: { key: "department", value: scopedDepartments } },
+  ];
+
+  const normalizedTags = Array.from(new Set((tags ?? []).map((t) => t.trim()).filter((t) => t.length > 0)));
+  if (normalizedTags.length > 0) {
+    clauses.push({ in: { key: "tags", value: normalizedTags } });
+  }
+
+  return { andAll: clauses };
 }
 
 /**
@@ -114,7 +124,7 @@ export async function* invokeAgent(input: AgentInvokeInput): AsyncGenerator<Agen
 
   // Build the mandatory filter BEFORE any Bedrock call — a missing tenant
   // throws here and never reaches the network.
-  const filter = buildRetrievalFilter(input.tenantId, input.departments);
+  const filter = buildRetrievalFilter(input.tenantId, input.departments, input.tags);
   const knowledgeBaseConfigurations = [
     buildKnowledgeBaseConfiguration(input.knowledgeBaseId, filter),
   ];
