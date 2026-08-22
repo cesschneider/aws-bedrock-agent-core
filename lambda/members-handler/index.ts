@@ -1,7 +1,4 @@
-import type {
-  APIGatewayProxyEventV2WithJWTAuthorizer,
-  APIGatewayProxyStructuredResultV2,
-} from "aws-lambda";
+import type { APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   acceptMembership,
@@ -11,6 +8,7 @@ import {
   removeMember,
   MembershipError,
 } from "../common/membership-store";
+import { authContextFromEvent, type AuthorizedEvent } from "../common/authorizer-context";
 
 /**
  * Per-tenant member management API (multi-user support).
@@ -39,17 +37,13 @@ interface AuthContext {
   email: string;
 }
 
-function authFromEvent(event: APIGatewayProxyEventV2WithJWTAuthorizer): AuthContext {
-  const claims = event.requestContext.authorizer.jwt.claims as Record<string, string>;
-  const tenantId = claims["custom:tenantId"];
-  if (!tenantId || tenantId.trim().length === 0) {
-    throw Object.assign(new Error("Missing tenant claim (custom:tenantId)"), { statusCode: 401 });
-  }
-  const email = claims["email"] ?? "";
+function authFromEvent(event: AuthorizedEvent): AuthContext {
+  const auth = authContextFromEvent(event);
+  const email = auth.email;
   if (!email) {
     throw Object.assign(new Error("Missing email claim"), { statusCode: 401 });
   }
-  return { tenantId: tenantId.trim(), email: email.toLowerCase() };
+  return { tenantId: auth.tenantId, email: email.toLowerCase() };
 }
 
 /**
@@ -143,7 +137,7 @@ async function handleRemove(auth: AuthContext, targetEmail: string): Promise<API
 }
 
 export const handler = async (
-  event: APIGatewayProxyEventV2WithJWTAuthorizer
+  event: AuthorizedEvent
 ): Promise<APIGatewayProxyStructuredResultV2> => {
   if (!tableName) {
     return json(500, { error: "TENANT_MEMBERSHIP_TABLE_NAME is required" });

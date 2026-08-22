@@ -1,7 +1,4 @@
-import type {
-  APIGatewayProxyEventV2WithJWTAuthorizer,
-  APIGatewayProxyStructuredResultV2,
-} from "aws-lambda";
+import type { APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import {
@@ -10,7 +7,8 @@ import {
   listDocuments,
   type DocumentRecord,
 } from "../common/document-store";
-import { parseDepartmentClaims, tenantOrgWide } from "../common/auth";
+import { tenantOrgWide } from "../common/auth";
+import { authContextFromEvent, type AuthorizedEvent } from "../common/authorizer-context";
 
 /**
  * Document registry API (multi-tenant design §4.2 extension).
@@ -55,20 +53,16 @@ interface AuthContext {
   departments: string[];
 }
 
-function authFromEvent(event: APIGatewayProxyEventV2WithJWTAuthorizer): AuthContext {
-  const claims = event.requestContext.authorizer.jwt.claims as Record<string, string>;
-  const tenantId = claims["custom:tenantId"];
-  if (!tenantId || tenantId.trim().length === 0) {
-    throw Object.assign(new Error("Missing tenant claim (custom:tenantId)"), { statusCode: 401 });
-  }
+function authFromEvent(event: AuthorizedEvent): AuthContext {
+  const auth = authContextFromEvent(event);
   const departments = Array.from(
-    new Set([...parseDepartmentClaims(claims), tenantOrgWide(tenantId.trim())])
+    new Set([...auth.departments, tenantOrgWide(auth.tenantId)])
   );
-  return { tenantId: tenantId.trim(), departments };
+  return { tenantId: auth.tenantId, departments };
 }
 
 export async function handleList(
-  event: APIGatewayProxyEventV2WithJWTAuthorizer
+  event: AuthorizedEvent
 ): Promise<APIGatewayProxyStructuredResultV2> {
   const auth = authFromEvent(event);
   const records = await listDocuments(dynamo, tableName, auth.tenantId, auth.departments);
@@ -76,7 +70,7 @@ export async function handleList(
 }
 
 export async function handleGet(
-  event: APIGatewayProxyEventV2WithJWTAuthorizer,
+  event: AuthorizedEvent,
   documentId: string
 ): Promise<APIGatewayProxyStructuredResultV2> {
   const auth = authFromEvent(event);
@@ -91,7 +85,7 @@ export async function handleGet(
 }
 
 export async function handleDelete(
-  event: APIGatewayProxyEventV2WithJWTAuthorizer,
+  event: AuthorizedEvent,
   documentId: string
 ): Promise<APIGatewayProxyStructuredResultV2> {
   const auth = authFromEvent(event);
@@ -113,7 +107,7 @@ export async function handleDelete(
 }
 
 export const handler = async (
-  event: APIGatewayProxyEventV2WithJWTAuthorizer
+  event: AuthorizedEvent
 ): Promise<APIGatewayProxyStructuredResultV2> => {
   if (!tableName || !bucketName) {
     return json(500, { error: "DOCUMENT_REGISTRY_TABLE_NAME and DOCUMENTS_BUCKET_NAME are required" });

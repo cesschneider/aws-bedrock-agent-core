@@ -1,7 +1,4 @@
-import type {
-  APIGatewayProxyEventV2WithJWTAuthorizer,
-  APIGatewayProxyStructuredResultV2,
-} from "aws-lambda";
+import type { APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   createOrganization,
@@ -11,6 +8,7 @@ import {
   OrganizationError,
 } from "../common/organization-store";
 import { createAdminMembership, getMember } from "../common/membership-store";
+import { authContextFromEvent, type AuthorizedEvent } from "../common/authorizer-context";
 
 /**
  * Name-based organization creation (Google-account flow).
@@ -31,9 +29,9 @@ function json(statusCode: number, body: unknown): APIGatewayProxyStructuredResul
   return { statusCode, headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
 }
 
-function emailFromEvent(event: APIGatewayProxyEventV2WithJWTAuthorizer): string {
-  const claims = event.requestContext.authorizer.jwt.claims as Record<string, string>;
-  const email = claims["email"];
+function emailFromEvent(event: AuthorizedEvent): string {
+  const auth = authContextFromEvent(event);
+  const email = auth.email;
   if (!email || !email.includes("@")) {
     throw Object.assign(new Error("Missing email claim"), { statusCode: 401 });
   }
@@ -94,7 +92,7 @@ async function handleCreate(
 }
 
 export const handler = async (
-  event: APIGatewayProxyEventV2WithJWTAuthorizer
+  event: AuthorizedEvent
 ): Promise<APIGatewayProxyStructuredResultV2> => {
   if (!orgTable || !membershipTable) {
     return json(500, { error: "ORGANIZATION_TABLE_NAME and TENANT_MEMBERSHIP_TABLE_NAME are required" });

@@ -21,21 +21,23 @@ describe("UploadApi", () => {
     });
   });
 
-  it("protects POST /uploads with a Cognito JWT authorizer", () => {
+  it("protects POST /uploads with the dual-issuer Lambda authorizer", () => {
     const template = synthDev();
     template.hasResourceProperties("AWS::ApiGatewayV2::Authorizer", {
-      AuthorizerType: "JWT",
+      AuthorizerType: "REQUEST",
+      EnableSimpleResponses: true,
     });
     const routes = JSON.stringify(template.findResources("AWS::ApiGatewayV2::Route"));
     expect(routes).toContain("POST /uploads");
     // The route must reference the authorizer, not be open.
-    expect(routes).toContain("JWT");
+    expect(routes).toContain("AuthorizerId");
   });
 
-  it("points the JWT issuer at the stack's Cognito user pool", () => {
+  it("points the authorizer at the shared dual-issuer Lambda", () => {
     const template = synthDev();
     const authorizers = JSON.stringify(template.findResources("AWS::ApiGatewayV2::Authorizer"));
-    expect(authorizers).toContain("cognito-idp.us-east-1.amazonaws.com");
+    expect(authorizers).toContain("DualIssuerAuthorizerAuthorizerFn");
+    expect(authorizers).toContain("lambda:path/2015-03-31/functions");
   });
 
   it("configures CORS on the raw-documents bucket so the browser can POST directly to S3", () => {

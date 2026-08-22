@@ -1,4 +1,4 @@
-import type { APIGatewayProxyEventV2WithJWTAuthorizer } from "aws-lambda";
+import type { APIGatewayProxyEventV2WithLambdaAuthorizer } from "aws-lambda";
 import { S3Client } from "@aws-sdk/client-s3";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
@@ -14,25 +14,22 @@ function makeEvent(overrides: {
   body?: string;
   groups?: string;
   tenantId?: string;
-}): APIGatewayProxyEventV2WithJWTAuthorizer {
-  const claims: Record<string, string> = {};
+}): APIGatewayProxyEventV2WithLambdaAuthorizer<Record<string, string>> {
+  const ctx: Record<string, string> = {};
   if (overrides.groups !== undefined) {
-    claims["custom:departments"] = overrides.groups;
+    ctx["departments"] = overrides.groups;
   }
   // Default tenant for all tests; individual tests can override.
-  claims["custom:tenantId"] = overrides.tenantId ?? "acme-com";
-  claims["cognito:username"] = "dev-tester";
+  ctx["tenantId"] = overrides.tenantId ?? "acme-com";
+  ctx["userId"] = "dev-tester";
   return {
     body: overrides.body,
     requestContext: {
       authorizer: {
-        jwt: {
-          claims,
-          scopes: null,
-        },
+        lambda: ctx,
       },
     },
-  } as unknown as APIGatewayProxyEventV2WithJWTAuthorizer;
+  } as unknown as APIGatewayProxyEventV2WithLambdaAuthorizer<Record<string, string>>;
 }
 
 function makeDeps(): UploadDependencies {
