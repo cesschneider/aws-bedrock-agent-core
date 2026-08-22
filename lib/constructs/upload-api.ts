@@ -2,43 +2,29 @@ import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as integrations from "aws-cdk-lib/aws-apigatewayv2-integrations";
-import * as authorizers from "aws-cdk-lib/aws-apigatewayv2-authorizers";
 import * as lambdaNode from "aws-cdk-lib/aws-lambda-nodejs";
-import * as cognito from "aws-cdk-lib/aws-cognito";
 
 export interface UploadApiProps {
   envName: string;
   /** The upload-handler Lambda that signs presigned POSTs. */
   uploadHandler: lambdaNode.NodejsFunction;
-  /** Cognito user pool whose JWTs authorize upload requests. */
-  userPool: cognito.UserPool;
-  /** App client accepted as JWT audience. */
-  userPoolClient: cognito.UserPoolClient;
+  /** Dual-issuer (Cognito + Supabase) Lambda authorizer. */
+  authorizer: apigwv2.IHttpRouteAuthorizer;
 }
 
 /**
  * HTTP API fronting the upload-handler (spec Section 4.2).
  *
- * Uses API Gateway's built-in JWT authorizer against the Cognito user pool —
- * unlike the chat-handler's Function URL, the upload path gets gateway-level
- * auth, so the Lambda only ever sees requests with a validated JWT and can
- * trust the claims in the request context (parseDepartmentClaims).
+ * Uses the shared dual-issuer Lambda authorizer (Cognito RS256 + Supabase
+ * ES256), so the Lovable UI can call it with either token type. The Lambda
+ * only ever sees requests with a validated token and reads the normalized
+ * context from `requestContext.authorizer.lambda.*`.
  */
 export class UploadApi extends Construct {
   public readonly httpApi: apigwv2.HttpApi;
 
   constructor(scope: Construct, id: string, props: UploadApiProps) {
     super(scope, id);
-
-    const stack = cdk.Stack.of(this);
-
-    const authorizer = new authorizers.HttpJwtAuthorizer(
-      "CognitoJwtAuthorizer",
-      `https://cognito-idp.${stack.region}.amazonaws.com/${props.userPool.userPoolId}`,
-      {
-        jwtAudience: [props.userPoolClient.userPoolClientId],
-      }
-    );
 
     this.httpApi = new apigwv2.HttpApi(this, "UploadApi", {
       apiName: `rag-knowledge-agent-upload-${props.envName}`,
@@ -58,7 +44,7 @@ export class UploadApi extends Construct {
         "UploadHandlerIntegration",
         props.uploadHandler
       ),
-      authorizer,
+      authorizer: props.authorizer,
     });
 
     new cdk.CfnOutput(this, "UploadApiUrl", {
@@ -66,4 +52,3 @@ export class UploadApi extends Construct {
     });
   }
 }
-

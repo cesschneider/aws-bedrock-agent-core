@@ -1,14 +1,12 @@
 import { randomUUID } from "crypto";
-import type {
-  APIGatewayProxyEventV2WithJWTAuthorizer,
-  APIGatewayProxyStructuredResultV2,
-} from "aws-lambda";
+import type { APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 import { S3Client } from "@aws-sdk/client-s3";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
-import { ORG_WIDE, namespacedDepartment, parseDepartmentClaims, tenantOrgWide, userCanAccessDepartment } from "../common/auth";
+import { ORG_WIDE, namespacedDepartment, tenantOrgWide, userCanAccessDepartment } from "../common/auth";
 import { putDocument, type DocumentRecord } from "../common/document-store";
 import { validateTagsAgainstCatalog } from "../common/catalog-store";
+import { authContextFromEvent, type AuthorizedEvent } from "../common/authorizer-context";
 
 /** Bedrock KB default-supported office document types (spec Section 2, Goals). */
 const ALLOWED_CONTENT_TYPES = new Set([
@@ -102,7 +100,7 @@ export interface UploadDependencies {
 }
 
 export async function handleUploadRequest(
-  event: APIGatewayProxyEventV2WithJWTAuthorizer,
+  event: AuthorizedEvent,
   deps: UploadDependencies
 ): Promise<APIGatewayProxyStructuredResultV2> {
   let body: UploadRequestBody;
@@ -115,19 +113,27 @@ export async function handleUploadRequest(
     throw err;
   }
 
-  const claims = event.requestContext.authorizer.jwt.claims as Record<string, string>;
-  const userDepartments = parseDepartmentClaims(claims);
+  let auth;
+  try {
+    auth = authContextFromEvent(event);
+  } catch (err) {
+    const e = err as { statusCode?: number };
+    if (e.statusCode === 401) {
+      return { statusCode: 401, body: JSON.stringify({ error: "Missing tenant claim (custom:tenantId)" }) };
+    }
+    throw err;
+  }
+  const userDepartments = auth.departments;
 
-  // Tenant is derived from the verified JWT (multi-tenant design §4.2/§6) —
+  // Tenant is derived from the verified token (multi-tenant design §4.2/§6) —
   // never from the request body. Missing tenant fails closed.
-  const tenantId = claims["custom:tenantId"];
+  const tenantId = auth.tenantId;
   if (!tenantId || tenantId.trim().length === 0) {
     return {
       statusCode: 401,
       body: JSON.stringify({ error: "Missing tenant claim (custom:tenantId)" }),
     };
   }
-
   // Every user can upload to their tenant's org-wide scope.
   const effectiveDepartments = Array.from(
     new Set([...userDepartments, tenantOrgWide(tenantId.trim())])
@@ -171,7 +177,7 @@ export async function handleUploadRequest(
   // Persist a PENDING registry record so the document is immediately visible
   // to the list/get API, even before ingestion completes. kb-sync-trigger
   // updates size + status to INDEXED once the object is observed.
-  const uploadedBy = claims["cognito:username"] ?? claims["sub"] ?? "unknown";
+  const uploadedBy = auth.userId || auth.email || "unknown";
   const record: DocumentRecord = {
     tenantId: tenantId.trim(),
     documentId,
@@ -217,7 +223,7 @@ const REGISTRY_TABLE_NAME = process.env.DOCUMENT_REGISTRY_TABLE_NAME ?? "";
 const CATALOG_TABLE_NAME = process.env.TENANT_CATALOG_TABLE_NAME ?? "";
 
 export const handler = async (
-  event: APIGatewayProxyEventV2WithJWTAuthorizer
+  event: AuthorizedEvent
 ): Promise<APIGatewayProxyStructuredResultV2> => {
   if (!BUCKET_NAME) {
     throw new Error("UPLOAD_BUCKET_NAME environment variable is not set");

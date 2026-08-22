@@ -1,7 +1,4 @@
-import type {
-  APIGatewayProxyEventV2WithJWTAuthorizer,
-  APIGatewayProxyStructuredResultV2,
-} from "aws-lambda";
+import type { APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   deleteCatalogItem,
@@ -13,6 +10,7 @@ import {
   type CatalogKind,
 } from "../common/catalog-store";
 import { isTenantAdmin } from "../common/membership-store";
+import { authContextFromEvent, type AuthorizedEvent } from "../common/authorizer-context";
 
 /**
  * Per-tenant department + tag catalog API.
@@ -45,14 +43,9 @@ interface AuthContext {
   email: string;
 }
 
-function authFromEvent(event: APIGatewayProxyEventV2WithJWTAuthorizer): AuthContext {
-  const claims = event.requestContext.authorizer.jwt.claims as Record<string, string>;
-  const tenantId = claims["custom:tenantId"];
-  if (!tenantId || tenantId.trim().length === 0) {
-    throw Object.assign(new Error("Missing tenant claim (custom:tenantId)"), { statusCode: 401 });
-  }
-  const email = claims["email"] ?? "";
-  return { tenantId: tenantId.trim(), email };
+function authFromEvent(event: AuthorizedEvent): AuthContext {
+  const auth = authContextFromEvent(event);
+  return { tenantId: auth.tenantId, email: auth.email };
 }
 
 /**
@@ -132,7 +125,7 @@ async function handleDelete(
 }
 
 export const handler = async (
-  event: APIGatewayProxyEventV2WithJWTAuthorizer
+  event: AuthorizedEvent
 ): Promise<APIGatewayProxyStructuredResultV2> => {
   if (!tableName) {
     return json(500, { error: "TENANT_CATALOG_TABLE_NAME is required" });

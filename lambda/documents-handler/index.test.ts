@@ -1,4 +1,4 @@
-import type { APIGatewayProxyEventV2WithJWTAuthorizer } from "aws-lambda";
+import type { APIGatewayProxyEventV2WithLambdaAuthorizer } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { S3Client } from "@aws-sdk/client-s3";
 import { handleList, handleGet, handleDelete } from "./index";
@@ -34,17 +34,17 @@ function makeEvent(overrides: {
   tenantId?: string;
   method?: string;
   path?: string;
-}): APIGatewayProxyEventV2WithJWTAuthorizer {
-  const claims: Record<string, string> = {};
-  claims["custom:departments"] = overrides.groups ?? "acme-com:dept-engineering";
-  claims["custom:tenantId"] = overrides.tenantId ?? "acme-com";
+}): APIGatewayProxyEventV2WithLambdaAuthorizer<Record<string, string>> {
+  const ctx: Record<string, string> = {};
+  ctx["departments"] = overrides.groups ?? "acme-com:dept-engineering";
+  ctx["tenantId"] = overrides.tenantId ?? "acme-com";
   return {
     requestContext: {
-      authorizer: { jwt: { claims, scopes: null } },
+      authorizer: { lambda: ctx },
       http: { method: overrides.method ?? "GET", path: overrides.path ?? "/documents" },
     },
     rawPath: overrides.path ?? "/documents",
-  } as unknown as APIGatewayProxyEventV2WithJWTAuthorizer;
+  } as unknown as APIGatewayProxyEventV2WithLambdaAuthorizer<Record<string, string>>;
 }
 
 // The module-level clients are created at import time; grab them via the

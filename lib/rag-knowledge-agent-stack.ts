@@ -22,6 +22,7 @@ import { TenantMembership } from "./constructs/tenant-membership";
 import { MembersApi } from "./constructs/members-api";
 import { Organization } from "./constructs/organization";
 import { OrganizationsApi } from "./constructs/organizations-api";
+import { DualIssuerAuthorizer } from "./constructs/dual-issuer-authorizer";
 
 export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
   /** Deployment environment slug: dev | stg | prd */
@@ -70,6 +71,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
   public readonly membersApi: MembersApi;
   public readonly organization: Organization;
   public readonly organizationsApi: OrganizationsApi;
+  public readonly dualIssuerAuthorizer: DualIssuerAuthorizer;
 
   constructor(scope: Construct, id: string, props: RagKnowledgeAgentStackProps) {
     super(scope, id, props);
@@ -180,11 +182,20 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
       tenantMembershipTable: this.tenantMembership.table,
     });
 
+    // Shared dual-issuer (Cognito + Supabase) Lambda authorizer, used by all
+    // HTTP APIs so the Lovable UI can call them with either token type.
+    this.dualIssuerAuthorizer = new DualIssuerAuthorizer(this, "DualIssuerAuthorizer", {
+      envName: this.envName,
+      cognitoUserPoolId: this.identity.userPool.userPoolId,
+      cognitoClientId: this.identity.userPoolClient.userPoolClientId,
+      supabaseProjectRef: props.supabaseProjectRef,
+      tenantMembershipTable: this.tenantMembership.table,
+    });
+
     this.uploadApi = new UploadApi(this, "UploadApi", {
       envName: this.envName,
       uploadHandler: this.uploadPipeline.uploadHandler,
-      userPool: this.identity.userPool,
-      userPoolClient: this.identity.userPoolClient,
+      authorizer: this.dualIssuerAuthorizer.authorizerFor(this, "UploadApiAuthorizer"),
     });
 
     // Document list/get/delete API (multi-tenant design §4.2 extension).
@@ -204,8 +215,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
     this.documentsApi = new DocumentsApi(this, "DocumentsApi", {
       envName: this.envName,
       documentsHandler,
-      userPool: this.identity.userPool,
-      userPoolClient: this.identity.userPoolClient,
+      authorizer: this.dualIssuerAuthorizer.authorizerFor(this, "DocumentsApiAuthorizer"),
       documentsBucket: this.uploadPipeline.bucket,
       registryTable: this.documentRegistry.table,
     });
@@ -234,8 +244,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
     this.catalogApi = new CatalogApi(this, "CatalogApi", {
       envName: this.envName,
       catalogHandler,
-      userPool: this.identity.userPool,
-      userPoolClient: this.identity.userPoolClient,
+      authorizer: this.dualIssuerAuthorizer.authorizerFor(this, "CatalogApiAuthorizer"),
     });
 
     // Per-tenant member management API (multi-user support): invite, list,
@@ -255,8 +264,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
     this.membersApi = new MembersApi(this, "MembersApi", {
       envName: this.envName,
       membersHandler,
-      userPool: this.identity.userPool,
-      userPoolClient: this.identity.userPoolClient,
+      authorizer: this.dualIssuerAuthorizer.authorizerFor(this, "MembersApiAuthorizer"),
     });
 
     // Name-based organization creation (Google-account flow): check name
@@ -277,8 +285,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
     this.organizationsApi = new OrganizationsApi(this, "OrganizationsApi", {
       envName: this.envName,
       organizationsHandler,
-      userPool: this.identity.userPool,
-      userPoolClient: this.identity.userPoolClient,
+      authorizer: this.dualIssuerAuthorizer.authorizerFor(this, "OrganizationsApiAuthorizer"),
     });
 
     // Surface the values the chat CLI and the upload guide need, so they can
