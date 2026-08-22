@@ -48,24 +48,40 @@ Cognito (dev):
 
 ## 2. Autenticação
 
-Todos os endpoints autenticados usam **Cognito JWT bearer token** (ID token).
+Todos os endpoints autenticados aceitam **dois tipos de JWT bearer token**,
+validados por um **authorizer Lambda dual-issuer** (rota por `iss`):
+
+| Issuer | Algoritmo | Token | Uso |
+|---|---|---|---|
+| Cognito (`https://cognito-idp.us-east-1.amazonaws.com/us-east-1_l8i7P13nO`) | RS256 | ID token | Login por senha (fluxo legado) |
+| Supabase / Lovable Cloud (`https://lxqsievatwcbxhwhubkc.supabase.co/auth/v1`) | ES256 | Access token | Login Google via Lovable UI |
 
 ```
-Authorization: Bearer <id-token>
+Authorization: Bearer ***
 ```
 
-- **Chat** — Function URL sem authorizer; o Lambda valida o JWT.
-- **Upload / Documents / Catalog / Organizations / Members** — API Gateway com JWT authorizer (Cognito).
+- **Chat** — Function URL sem authorizer; o Lambda valida o JWT (dual-issuer).
+- **Upload / Documents / Catalog / Organizations / Members** — API Gateway com
+  authorizer Lambda dual-issuer (mesma lógica de validação do chat).
 
-O ID token carrega:
+O authorizer valida `iss`, `aud`, `exp` e a assinatura (JWKS com cache +
+refetch em rotação de chave) e devolve um **contexto normalizado** para os
+handlers:
 
-| Claim | Significado |
+| Campo | Significado |
 |---|---|
-| `custom:tenantId` | Tenant do usuário (ex. `acme-corporation`). **Ausente** para usuário Google sem organização (pode criar/entrar em org, mas não recupera dados) |
-| `custom:departments` | Departamentos namespaced, separados por vírgula (ex. `acme-corporation:dept-engineering,acme-corporation:org-wide`) |
+| `tenantId` | Tenant do usuário. Cognito: `custom:tenantId`. Supabase: resolvido no servidor pela tabela de membership (por `email`). **Ausente** para usuário sem organização |
+| `email` | Email do usuário (normalizado lowercase) |
+| `departments` | Departamentos namespaced, separados por vírgula (ex. `acme-corporation:dept-engineering,acme-corporation:org-wide`) |
+| `userId` | Identidade estável do usuário |
 
 > A UI **não** deve filtrar por tenant/departamento — apenas envia o token e
 > renderiza o que o backend retorna. O isolamento é feito no servidor.
+
+> **Supabase (Lovable Cloud)** — o token é o access token do Supabase. O tenant
+> é resolvido pelo `email` contra a tabela de membership; sem membership o
+> request falha com `401` (fail-closed). O `sub` do Supabase é a identidade
+> estável do usuário.
 
 **Login (USER_PASSWORD_AUTH)** — exemplo com `amazon-cognito-identity-js`:
 
@@ -646,16 +662,17 @@ curl -X DELETE https://k46nbxrrl0.execute-api.us-east-1.amazonaws.com/catalog/ta
   refletir `INDEXED`.
 - **Erros**: exiba o body de erro (`{"error":"…"}`) verbatim, como nas telas
   existentes.
-- **Token**: armazene o ID token em memória/localStorage; anexe a todas as
-  chamadas autenticadas; renove silenciosamente e redirecione ao login em 401.
+- **Token**: armazene o token (Cognito ID token ou Supabase access token) em
+  memória/localStorage; anexe a todas as chamadas autenticadas; renove
+  silenciosamente e redirecione ao login em 401.
 - **Config**: centralize as 7 base URLs em um único arquivo de config para
   trocar por ambiente facilmente.
 - **Criação de conta (Google)**: após o login com Google, se o token não tiver
-  `custom:tenantId`, mostre a tela de criação de organização. Valide o nome em
-  tempo real com `GET /organizations/check-name?name=…` (debounce) e habilite
-  o botão "Criar" apenas quando `available: true`. Ao criar
-  (`POST /organizations`), o usuário vira admin — reautentique para obter o
-  novo `custom:tenantId` no token.
+  `tenantId` (Cognito: `custom:tenantId`; Supabase: sem membership), mostre a
+  tela de criação de organização. Valide o nome em tempo real com
+  `GET /organizations/check-name?name=…` (debounce) e habilite o botão "Criar"
+  apenas quando `available: true`. Ao criar (`POST /organizations`), o usuário
+  vira admin — reautentique para obter o novo `tenantId` no token.
 - **Gerenciar membros**: se o usuário for admin, exiba a tela de membros
   (`GET /members`), com convite por email (`POST /members/invite`) e remoção
   (`DELETE /members/{email}`). Não-admin veem a lista em modo leitura.
