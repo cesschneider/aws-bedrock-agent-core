@@ -23,13 +23,19 @@ const API_SPEC = {
     },
   },
   auth: {
-    type: "Cognito JWT bearer (ID token)",
-    header: "Authorization: Bearer <id-token>",
-    claims: {
-      "custom:tenantId": "The user's tenant (e.g. dev)",
-      "custom:departments": "Comma-separated tenant-namespaced departments (e.g. dev:dept-engineering,dev:org-wide)",
+    type: "Dual-issuer JWT bearer (Cognito RS256 + Supabase/Lovable Cloud ES256)",
+    header: "Authorization: Bearer ***",
+    issuers: {
+      cognito: "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_l8i7P13nO (ID token, RS256)",
+      supabase: "https://lxqsievatwcbxhwhubkc.supabase.co/auth/v1 (access token, ES256)",
     },
-    note: "The UI must not filter by tenant/department itself; the backend enforces isolation from the token claims.",
+    context: {
+      tenantId: "Cognito: custom:tenantId. Supabase: resolved server-side from membership by email. Absent for users without an organization.",
+      email: "The user's email (lowercased)",
+      departments: "Comma-separated tenant-namespaced departments (e.g. dev:dept-engineering,dev:org-wide)",
+      userId: "Stable user identity",
+    },
+    note: "The UI must not filter by tenant/department itself; the backend enforces isolation from the verified token. Supabase tokens without a membership record fail closed (401).",
   },
   endpoints: [
     {
