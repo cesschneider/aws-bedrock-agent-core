@@ -52,6 +52,12 @@ export class DocsApi extends Construct {
       integration: new integrations.HttpLambdaIntegration("DocsIntegration", fn),
     });
 
+    this.httpApi.addRoutes({
+      path: "/dev-docs",
+      methods: [apigwv2.HttpMethod.GET],
+      integration: new integrations.HttpLambdaIntegration("DevDocsIntegration", fn),
+    });
+
     new cdk.CfnOutput(this, "DocsApiUrl", {
       value: this.httpApi.apiEndpoint,
     });
