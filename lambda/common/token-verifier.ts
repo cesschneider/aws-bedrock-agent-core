@@ -24,7 +24,11 @@ export interface VerifiedIdentity {
   userId: string;
   /** Email when present (Supabase tokens always carry it; Cognito may not). */
   email?: string;
-  /** Tenant (organization) the user belongs to. */
+  /**
+   * Tenant (organization) the user belongs to. Empty string when the user
+   * is authenticated but has not yet created/joined an organization
+   * (Supabase path only — Cognito always has custom:tenantId).
+   */
   tenantId: string;
   departments: string[];
 }
@@ -210,9 +214,15 @@ export class TokenVerifier {
     header: JwtClaims,
     payload: JwtClaims
   ): Promise<VerifiedIdentity> {
-    if (payload.aud !== "authenticated") {
+    // Supabase may send aud as a string ("authenticated") or an array
+    // (["authenticated"]). Accept both forms.
+    const aud = payload.aud;
+    const audOk =
+      aud === "authenticated" ||
+      (Array.isArray(aud) && aud.includes("authenticated"));
+    if (!audOk) {
       throw Object.assign(
-        new Error(`Wrong token audience: expected "authenticated", got ${payload.aud}`),
+        new Error(`Wrong token audience: expected "authenticated", got ${JSON.stringify(aud)}`),
         { statusCode: 401 }
       );
     }
@@ -235,14 +245,18 @@ export class TokenVerifier {
     }
     const sub = (payload.sub ?? email) as string;
 
+    // Supabase tokens from new Google users may not have an organization yet.
+    // The token is still valid — return an identity with empty tenantId so
+    // the organizations-handler can create one. Handlers that require a tenant
+    // still fail-closed via authContextFromEvent.
     if (!this.dynamo || !this.membershipTableName) {
-      throw Object.assign(new Error("Membership resolution not configured"), { statusCode: 401 });
+      // No membership table configured — return authenticated identity without tenant.
+      return { userId: sub, email: email.toLowerCase(), tenantId: "", departments: [] };
     }
     const member = await resolveTenantFromMembership(this.dynamo, this.membershipTableName, email);
     if (!member) {
-      throw Object.assign(new Error("No organization membership found for this account"), {
-        statusCode: 401,
-      });
+      // Authenticated but no organization yet — allow org creation flow.
+      return { userId: sub, email: email.toLowerCase(), tenantId: "", departments: [] };
     }
 
     const departments = [tenantOrgWide(member.tenantId)];

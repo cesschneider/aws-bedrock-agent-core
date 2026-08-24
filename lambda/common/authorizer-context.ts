@@ -33,3 +33,24 @@ export function authContextFromEvent(event: AuthorizedEvent): AuthContext {
   }
   return { tenantId, email, departments, userId };
 }
+
+/**
+ * Like authContextFromEvent but does NOT require a tenantId. Used by the
+ * organization-creation flow where a Google-authenticated user may not yet
+ * belong to any organization. Email is still required.
+ */
+export function authContextFromEventOptionalTenant(event: AuthorizedEvent): AuthContext {
+  const ctx = event.requestContext.authorizer.lambda ?? {};
+  const tenantId = ctx.tenantId ?? "";
+  const email = ctx.email ?? "";
+  const userId = ctx.userId ?? "";
+  const departments = (ctx.departments ?? "")
+    .split(",")
+    .map((d) => d.trim())
+    .filter((d) => d.length > 0);
+
+  if (!email || !email.includes("@")) {
+    throw Object.assign(new Error("Missing email claim"), { statusCode: 401 });
+  }
+  return { tenantId, email, departments, userId };
+}
