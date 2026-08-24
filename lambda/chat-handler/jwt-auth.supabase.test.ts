@@ -96,10 +96,13 @@ describe("authenticate (Supabase path)", () => {
     await expect(authenticate(`Bearer ${token}`)).rejects.toMatchObject({ statusCode: 401 });
   });
 
-  it("rejects a Supabase token whose email has no membership (fail closed)", async () => {
+  it("returns identity with empty tenantId when email has no membership (org-creation flow)", async () => {
     (dynamo.send as jest.Mock).mockResolvedValueOnce({ Item: undefined });
     const token = signEs256(supabasePayload({ email: "nobody@acme.com" }));
-    await expect(authenticate(`Bearer ${token}`)).rejects.toMatchObject({ statusCode: 401 });
+    const identity = await authenticate(`Bearer ${token}`);
+    expect(identity.tenantId).toBe("");
+    expect(identity.email).toBe("nobody@acme.com");
+    expect(identity.departments).toEqual([]);
   });
 
   it("rejects a Supabase token with a tampered signature", async () => {

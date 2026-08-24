@@ -8,7 +8,7 @@ import {
   OrganizationError,
 } from "../common/organization-store";
 import { createAdminMembership, getMember } from "../common/membership-store";
-import { authContextFromEvent, type AuthorizedEvent } from "../common/authorizer-context";
+import { authContextFromEventOptionalTenant, type AuthorizedEvent } from "../common/authorizer-context";
 
 /**
  * Name-based organization creation (Google-account flow).
@@ -30,7 +30,7 @@ function json(statusCode: number, body: unknown): APIGatewayProxyStructuredResul
 }
 
 function emailFromEvent(event: AuthorizedEvent): string {
-  const auth = authContextFromEvent(event);
+  const auth = authContextFromEventOptionalTenant(event);
   const email = auth.email;
   if (!email || !email.includes("@")) {
     throw Object.assign(new Error("Missing email claim"), { statusCode: 401 });
