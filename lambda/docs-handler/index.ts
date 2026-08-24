@@ -220,6 +220,17 @@ const API_SPEC = {
       errors: { 404: "No invitation found for this email" },
     },
     {
+      method: "PUT",
+      path: "/members/{email}/departments",
+      service: "members",
+      auth: true,
+      adminOnly: true,
+      description: "Update a member's department assignments (tenant admin only).",
+      request: { departments: "string[] — department names (e.g. [\"dept-engineering\"]). Empty array clears all." },
+      response: { email: "string", tenantId: "string", role: "string", status: "string", departments: "string[]" },
+      errors: { 403: "Only the tenant admin can manage members", 404: "Member not found in your organization" },
+    },
+    {
       method: "DELETE",
       path: "/members/{email}",
       service: "members",
@@ -380,6 +391,8 @@ Members       — https://qsdndxv5o1.execute-api.us-east-1.amazonaws.com
 <div class="desc">Invite a user by email (admin only).</div>
 <div class="endpoint"><span class="method" style="background:#1a3a2a;color:#7ee787">POST</span><span class="path">/members/accept <span class="tag">members</span></span></div>
 <div class="desc">Accept the caller's own invitation.</div>
+<div class="endpoint"><span class="method" style="background:#3a2a1a;color:#d29922">PUT</span><span class="path">/members/{email}/departments <span class="tag">members · admin</span></span></div>
+<div class="desc">Update a member's department assignments (admin only).</div>
 <div class="endpoint"><span class="method" style="background:#3a1a1a;color:#f85149">DELETE</span><span class="path">/members/{email} <span class="tag">members · admin</span></span></div>
 <div class="desc">Remove a member (admin only).</div>
 </div>

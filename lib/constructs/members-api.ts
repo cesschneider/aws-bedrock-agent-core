@@ -29,6 +29,7 @@ export class MembersApi extends Construct {
         allowMethods: [
           apigwv2.CorsHttpMethod.GET,
           apigwv2.CorsHttpMethod.POST,
+          apigwv2.CorsHttpMethod.PUT,
           apigwv2.CorsHttpMethod.DELETE,
           apigwv2.CorsHttpMethod.OPTIONS,
         ],
@@ -59,6 +60,13 @@ export class MembersApi extends Construct {
     this.httpApi.addRoutes({
       path: "/members/accept",
       methods: [apigwv2.HttpMethod.POST],
+      integration,
+      authorizer: props.authorizer,
+    });
+
+    this.httpApi.addRoutes({
+      path: "/members/{email}/departments",
+      methods: [apigwv2.HttpMethod.PUT],
       integration,
       authorizer: props.authorizer,
     });

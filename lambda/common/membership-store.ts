@@ -27,6 +27,8 @@ export interface MemberRecord {
   tenantId: string;
   role: MemberRole;
   status: MemberStatus;
+  /** Departments assigned to this member (tenant-namespaced, e.g. ["dept-engineering"]). */
+  departments: string[];
   invitedBy?: string;
   invitedAt?: string;
   acceptedAt?: string;
@@ -41,11 +43,13 @@ export class MembershipError extends Error {
 
 function fromItem(item: Record<string, AttributeValue> | undefined): MemberRecord | undefined {
   if (!item) return undefined;
+  const rawDepts = item.departments?.SS ?? [];
   return {
     email: item.email.S as string,
     tenantId: item.tenantId.S as string,
     role: item.role.S as MemberRole,
     status: item.status.S as MemberStatus,
+    departments: rawDepts,
     invitedBy: item.invitedBy?.S,
     invitedAt: item.invitedAt?.S,
     acceptedAt: item.acceptedAt?.S,
@@ -97,6 +101,7 @@ export async function inviteMember(
     tenantId: input.tenantId,
     role: "member",
     status: "PENDING",
+    departments: [],
     invitedBy: input.invitedBy,
     invitedAt: new Date().toISOString(),
   };
@@ -168,6 +173,7 @@ export async function createAdminMembership(
     tenantId: input.tenantId,
     role: "admin",
     status: "ACTIVE",
+    departments: [],
     acceptedAt: new Date().toISOString(),
   };
 
@@ -231,4 +237,31 @@ export async function isTenantAdmin(
       member.status === "ACTIVE" &&
       member.role === "admin"
   );
+}
+
+/**
+ * Updates the departments assigned to a member. The caller is responsible for
+ * admin authorization and validating that the departments belong to the
+ * tenant's catalog. An empty array clears all department assignments.
+ */
+export async function updateMemberDepartments(
+  dynamo: DynamoDBClient,
+  tableName: string,
+  email: string,
+  departments: string[]
+): Promise<MemberRecord> {
+  const key = { email: { S: email.toLowerCase() } };
+  await dynamo.send(
+    new UpdateItemCommand({
+      TableName: tableName,
+      Key: key,
+      UpdateExpression: "SET departments = :depts",
+      ExpressionAttributeValues: {
+        ":depts": { SS: departments.length > 0 ? departments : [""] },
+      },
+    })
+  );
+  const updated = await getMember(dynamo, tableName, email);
+  if (!updated) throw new MembershipError("Member not found after update");
+  return updated;
 }
