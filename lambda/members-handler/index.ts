@@ -8,7 +8,7 @@ import {
   removeMember,
   MembershipError,
 } from "../common/membership-store";
-import { authContextFromEvent, type AuthorizedEvent } from "../common/authorizer-context";
+import { authContextFromEvent, authContextFromEventOptionalTenant, type AuthorizedEvent } from "../common/authorizer-context";
 
 /**
  * Per-tenant member management API (multi-user support).
@@ -144,10 +144,19 @@ export const handler = async (
   }
 
   try {
-    const auth = authFromEvent(event);
     const method = event.requestContext.http.method;
     const path = event.rawPath ?? event.requestContext.http.path ?? "";
     const segments = path.split("/").filter(Boolean); // e.g. ["members", "invite"]
+
+    // POST /members/accept — uses optional-tenant auth (invitee has PENDING
+    // membership, no active tenant yet). All other routes require a tenant.
+    if (method === "POST" && segments.length === 2 && segments[0] === "members" && segments[1] === "accept") {
+      const optAuth = authContextFromEventOptionalTenant(event);
+      const email = optAuth.email.toLowerCase();
+      return await handleAccept({ tenantId: optAuth.tenantId, email });
+    }
+
+    const auth = authFromEvent(event);
 
     // GET /members
     if (method === "GET" && segments.length === 1 && segments[0] === "members") {
@@ -158,11 +167,6 @@ export const handler = async (
     if (method === "POST" && segments.length === 2 && segments[0] === "members" && segments[1] === "invite") {
       const body = JSON.parse(event.body ?? "{}") as { email?: string };
       return await handleInvite(auth, body);
-    }
-
-    // POST /members/accept
-    if (method === "POST" && segments.length === 2 && segments[0] === "members" && segments[1] === "accept") {
-      return await handleAccept(auth);
     }
 
     // DELETE /members/{email}
