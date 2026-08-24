@@ -505,7 +505,24 @@ fazer parte da organização (acesso aos dados do tenant).
 { "email": "user@acme.com", "role": "member", "status": "ACTIVE" }
 ```
 
-### 7.4 Remover membro
+### 7.4 Atualizar departamentos do membro
+
+`PUT /members/{email}/departments` (admin)
+
+```json
+{ "departments": ["dept-engineering"] }
+```
+
+**Response `200`**
+
+```json
+{ "email": "user@acme.com", "tenantId": "acme", "role": "member", "status": "ACTIVE", "departments": ["dept-engineering"] }
+```
+
+> Array vazio remove todos os departamentos. Os nomes devem existir no
+> catálogo do tenant.
+
+### 7.5 Remover membro
 
 `DELETE /members/{email}`
 

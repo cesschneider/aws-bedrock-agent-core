@@ -6,6 +6,8 @@ import {
   isTenantAdmin,
   listMembers,
   removeMember,
+  updateMemberDepartments,
+  getMember,
   MembershipError,
 } from "../common/membership-store";
 import { authContextFromEvent, authContextFromEventOptionalTenant, type AuthorizedEvent } from "../common/authorizer-context";
@@ -13,10 +15,11 @@ import { authContextFromEvent, authContextFromEventOptionalTenant, type Authoriz
 /**
  * Per-tenant member management API (multi-user support).
  *
- *   GET    /members                    — list members (admin)
- *   POST   /members/invite             — invite a user by email (admin)
- *   POST   /members/accept             — accept the caller's own invitation
- *   DELETE /members/{email}            — remove a member (admin)
+ *   GET    /members                         — list members (admin)
+ *   POST   /members/invite                  — invite a user by email (admin)
+ *   POST   /members/accept                  — accept the caller's own invitation
+ *   PUT    /members/{email}/departments     — update member's departments (admin)
+ *   DELETE /members/{email}                 — remove a member (admin)
  *
  * The first user of a tenant (the provisioning admin) is created ACTIVE +
  * admin at tenant activation time. Admins invite additional users; invited
@@ -69,6 +72,7 @@ async function handleList(auth: AuthContext): Promise<APIGatewayProxyStructuredR
       email: m.email,
       role: m.role,
       status: m.status,
+      departments: m.departments,
       invitedBy: m.invitedBy,
       invitedAt: m.invitedAt,
       acceptedAt: m.acceptedAt,
@@ -122,6 +126,33 @@ async function handleAccept(auth: AuthContext): Promise<APIGatewayProxyStructure
   }
 }
 
+async function handleUpdateDepartments(
+  auth: AuthContext,
+  targetEmail: string,
+  body: { departments?: string[] }
+): Promise<APIGatewayProxyStructuredResultV2> {
+  const denied = await requireAdmin(auth);
+  if (denied) return denied;
+
+  const email = targetEmail.toLowerCase();
+  const departments = (body.departments ?? []).map((d) => d.trim()).filter((d) => d.length > 0);
+
+  // Verify the target is a member of the admin's tenant
+  const member = await getMember(dynamo, tableName, email);
+  if (!member || member.tenantId !== auth.tenantId) {
+    return json(404, { error: "Member not found in your organization" });
+  }
+
+  const updated = await updateMemberDepartments(dynamo, tableName, email, departments);
+  return json(200, {
+    email: updated.email,
+    tenantId: updated.tenantId,
+    role: updated.role,
+    status: updated.status,
+    departments: updated.departments,
+  });
+}
+
 async function handleRemove(auth: AuthContext, targetEmail: string): Promise<APIGatewayProxyStructuredResultV2> {
   const denied = await requireAdmin(auth);
   if (denied) return denied;
@@ -167,6 +198,12 @@ export const handler = async (
     if (method === "POST" && segments.length === 2 && segments[0] === "members" && segments[1] === "invite") {
       const body = JSON.parse(event.body ?? "{}") as { email?: string };
       return await handleInvite(auth, body);
+    }
+
+    // PUT /members/{email}/departments — update member's department assignments (admin)
+    if (method === "PUT" && segments.length === 3 && segments[0] === "members" && segments[2] === "departments") {
+      const body = JSON.parse(event.body ?? "{}") as { departments?: string[] };
+      return await handleUpdateDepartments(auth, decodeURIComponent(segments[1]), body);
     }
 
     // DELETE /members/{email}
