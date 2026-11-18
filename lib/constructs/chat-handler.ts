@@ -28,6 +28,10 @@ export interface ChatHandlerProps {
   agentAliasId?: string;
   /** Bedrock Knowledge Base ID — required for the retrieval metadata filter. */
   knowledgeBaseId?: string;
+  /** Supabase project ref (Lovable Cloud) — enables dual-issuer JWT validation. */
+  supabaseProjectRef?: string;
+  /** Tenant membership table — resolves tenant by email for Supabase tokens. */
+  tenantMembershipTable?: dynamodb.Table;
 }
 
 /**
@@ -65,6 +69,8 @@ export class ChatHandler extends Construct {
         AGENT_ID: props.agentId ?? "PENDING-AGENT-ID",
         AGENT_ALIAS_ID: props.agentAliasId ?? "PENDING-AGENT-ALIAS-ID",
         KNOWLEDGE_BASE_ID: props.knowledgeBaseId ?? "PENDING-KNOWLEDGE-BASE-ID",
+        SUPABASE_PROJECT_REF: props.supabaseProjectRef ?? "",
+        TENANT_MEMBERSHIP_TABLE_NAME: props.tenantMembershipTable?.tableName ?? "",
       },
       timeout: cdk.Duration.seconds(30),
       memorySize: 512,
@@ -81,6 +87,9 @@ export class ChatHandler extends Construct {
 
     // Write conversation turns to DynamoDB.
     props.conversationTable.grantWriteData(this.fn);
+
+    // Read membership to resolve tenant by email (Supabase token path).
+    props.tenantMembershipTable?.grantReadData(this.fn);
 
     // Generate presigned S3 URLs for citation downloads.
     props.documentsBucket.grantRead(this.fn);

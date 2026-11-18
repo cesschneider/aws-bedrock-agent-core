@@ -23,6 +23,8 @@ export interface KbSyncProps {
    */
   knowledgeBaseId: string;
   dataSourceId: string;
+  /** Document registry table the trigger updates to INDEXED. */
+  registryTable: dynamodb.Table;
 }
 
 function retentionFor(envName: string): logs.RetentionDays {
@@ -68,6 +70,7 @@ export class KbSync extends Construct {
       handler: "handler",
       environment: {
         DEDUP_TABLE_NAME: this.dedupTable.tableName,
+        DOCUMENT_REGISTRY_TABLE_NAME: props.registryTable.tableName,
         KNOWLEDGE_BASE_ID: props.knowledgeBaseId,
         DATA_SOURCE_ID: props.dataSourceId,
       },
@@ -77,6 +80,7 @@ export class KbSync extends Construct {
     });
 
     this.dedupTable.grantReadWriteData(this.trigger);
+    props.registryTable.grantReadWriteData(this.trigger);
     // Sidecar write needs PutObject; ingestion doesn't need to read source
     // documents (Bedrock KB reads directly from S3 via its own service role).
     props.sourceBucket.grantPut(this.trigger);

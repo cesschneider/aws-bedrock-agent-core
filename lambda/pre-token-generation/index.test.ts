@@ -110,6 +110,9 @@ describe("buildGroupOverride", () => {
 
     const override = result.response.claimsAndScopeOverrideDetails;
     expect(override?.idTokenGeneration?.claimsToAddOrOverride?.["custom:tenantId"]).toBe("acme.com");
+    expect(override?.idTokenGeneration?.claimsToAddOrOverride?.["custom:departments"]).toBe(
+      "acme.com:dept-engineering,acme.com:org-wide"
+    );
     expect(override?.groupOverrideDetails?.groupsToOverride).toEqual([
       "acme.com:dept-engineering",
       "acme.com:org-wide",
@@ -161,5 +164,20 @@ describe("buildGroupOverride", () => {
     await expect(buildGroupOverride(event, fetcher, failingResolver)).rejects.toThrow(
       "Unknown domain"
     );
+  });
+
+  it("emits no tenant claim for an unassigned Google user (no active membership)", async () => {
+    const unassignedResolver: TenantResolver = {
+      resolveTenantId: jest.fn().mockResolvedValue(undefined),
+    };
+    const fetcher: GroupsFetcher = { fetchGroupsForUser: jest.fn().mockResolvedValue([]) };
+    const event = makeEvent("new@acme.com", { identities: GOOGLE_IDENTITIES });
+
+    const result = await buildGroupOverride(event, fetcher, unassignedResolver);
+
+    const override = result.response.claimsAndScopeOverrideDetails;
+    expect(override?.idTokenGeneration?.claimsToAddOrOverride?.["custom:tenantId"]).toBeUndefined();
+    expect(override?.idTokenGeneration?.claimsToAddOrOverride?.["custom:departments"]).toBe("");
+    expect(override?.groupOverrideDetails?.groupsToOverride).toEqual([]);
   });
 });

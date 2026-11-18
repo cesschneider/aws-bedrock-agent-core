@@ -50,7 +50,7 @@ function validPayload(overrides: Record<string, unknown> = {}): Record<string, u
 }
 
 beforeAll(() => {
-  init(REGION, USER_POOL_ID, CLIENT_ID);
+  init({ region: REGION, userPoolId: USER_POOL_ID, clientId: CLIENT_ID });
   const jwk = publicKey.export({ format: "jwk" }) as Record<string, unknown>;
   global.fetch = jest.fn().mockResolvedValue({
     ok: true,

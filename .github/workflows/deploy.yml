@@ -32,7 +32,7 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
       - name: cdk deploy (dev)
-        run: npx cdk deploy --require-approval never --context env=dev --context dev-test-user-password='${{ secrets.DEV_TEST_USER_PASSWORD }}'
+        run: npx cdk deploy --require-approval never --context env=dev --context dev-test-user-password='${{ secrets.DEV_TEST_USER_PASSWORD }}' --context supabase-project-ref='${{ vars.SUPABASE_PROJECT_REF }}'
         env:
           RAG_ENV: dev
 
@@ -52,7 +52,7 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
       - name: cdk deploy (stg)
-        run: npx cdk deploy --require-approval never --context env=stg
+        run: npx cdk deploy --require-approval never --context env=stg --context supabase-project-ref='${{ vars.SUPABASE_PROJECT_REF }}'
         env:
           RAG_ENV: stg
 
@@ -72,7 +72,7 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
       - name: cdk deploy (prd)
-        run: npx cdk deploy --require-approval never --context env=prd
+        run: npx cdk deploy --require-approval never --context env=prd --context supabase-project-ref='${{ vars.SUPABASE_PROJECT_REF }}'
         env:
           RAG_ENV: prd
 

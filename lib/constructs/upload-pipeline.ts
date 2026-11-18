@@ -4,6 +4,7 @@ import * as s3 from "aws-cdk-lib/aws-s3";
 import * as lambdaNode from "aws-cdk-lib/aws-lambda-nodejs";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as path from "path";
 
 function retentionFor(envName: string): logs.RetentionDays {
@@ -12,6 +13,10 @@ function retentionFor(envName: string): logs.RetentionDays {
 
 export interface UploadPipelineProps {
   envName: string;
+  /** Document registry table the upload-handler writes PENDING records to. */
+  registryTable: dynamodb.Table;
+  /** Tenant catalog table the upload-handler validates tags against. */
+  catalogTable: dynamodb.Table;
 }
 
 /**
@@ -42,6 +47,17 @@ export class UploadPipeline extends Construct {
       autoDeleteObjects: props.envName !== "prd",
     });
 
+    // The browser POSTs the file directly to S3 via the presigned URL, so the
+    // bucket must allow cross-origin POSTs from the frontend. Without this the
+    // upload fails with a CORS error even though the API call succeeded.
+    // Tighten allowedOrigins to the frontend origin once it is known.
+    this.bucket.addCorsRule({
+      allowedMethods: [s3.HttpMethods.POST],
+      allowedOrigins: ["*"],
+      allowedHeaders: ["*"],
+      maxAge: 3000,
+    });
+
     const logGroup = new logs.LogGroup(this, "UploadHandlerLogGroup", {
       retention: retentionFor(props.envName),
       removalPolicy: props.envName === "prd" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
@@ -53,6 +69,8 @@ export class UploadPipeline extends Construct {
       handler: "handler",
       environment: {
         UPLOAD_BUCKET_NAME: this.bucket.bucketName,
+        DOCUMENT_REGISTRY_TABLE_NAME: props.registryTable.tableName,
+        TENANT_CATALOG_TABLE_NAME: props.catalogTable.tableName,
       },
       timeout: cdk.Duration.seconds(10),
       logGroup,
@@ -61,6 +79,10 @@ export class UploadPipeline extends Construct {
     // s3:PutObject only — the Lambda signs presigned POSTs for uploads, it
     // never reads or deletes objects itself (least privilege).
     this.bucket.grantPut(this.uploadHandler);
+    // Write access to the document registry (PENDING records at upload time).
+    props.registryTable.grantWriteData(this.uploadHandler);
+    // Read access to the tenant catalog (tag normalization on upload).
+    props.catalogTable.grantReadData(this.uploadHandler);
   }
 }
 
