@@ -20,8 +20,10 @@ function retentionFor(envName: string): logs.RetentionDays {
 export class DocsApi extends Construct {
   public readonly httpApi: apigwv2.HttpApi;
 
-  constructor(scope: Construct, id: string, props: { envName: string }) {
+  constructor(scope: Construct, id: string, props: { envName: string; resourcePrefix?: string }) {
     super(scope, id);
+
+    const prefix = props.resourcePrefix ?? "rag-knowledge-agent";
 
     const logGroup = new logs.LogGroup(this, "DocsHandlerLogGroup", {
       retention: retentionFor(props.envName),
@@ -37,7 +39,7 @@ export class DocsApi extends Construct {
     });
 
     this.httpApi = new apigwv2.HttpApi(this, "DocsApi", {
-      apiName: `rag-knowledge-agent-docs-${props.envName}`,
+      apiName: `${prefix}-docs-${props.envName}`,
       corsPreflight: {
         allowOrigins: ["*"],
         allowMethods: [apigwv2.CorsHttpMethod.GET, apigwv2.CorsHttpMethod.OPTIONS],

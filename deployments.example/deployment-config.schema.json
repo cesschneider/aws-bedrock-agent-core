@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "title": "Deployment Config",
+  "description": "Per-client deployment configuration for the RAG Knowledge Agent stack. Not versioned — lives in deployments/",
+  "type": "object",
+  "required": ["clientSlug", "envName", "account", "region"],
+  "properties": {
+    "clientSlug": {
+      "type": "string",
+      "description": "Short identifier for the client/context (e.g. 'nery', 'al4n', 'eworks'). Used in resource naming.",
+      "pattern": "^[a-z0-9][a-z0-9-]{2,20}$",
+      "examples": ["nery", "al4n", "eworks"]
+    },
+    "envName": {
+      "type": "string",
+      "enum": ["dev", "stg", "prd"],
+      "description": "Deployment environment within the client account."
+    },
+    "account": {
+      "type": "string",
+      "description": "12-digit AWS account ID for this deployment.",
+      "pattern": "^[0-9]{12}$"
+    },
+    "region": {
+      "type": "string",
+      "description": "AWS region for all stack resources.",
+      "default": "us-east-1",
+      "examples": ["us-east-1", "sa-east-1"]
+    },
+    "resourcePrefix": {
+      "type": "string",
+      "description": "Prefix for all named AWS resources (agent name, API names, bucket names, table names, roles, etc.). Replaces the hardcoded 'rag-knowledge-agent' prefix.",
+      "default": "rag-knowledge-agent",
+      "pattern": "^[a-z0-9][a-z0-9-]{2,40}$"
+    },
+    "stackName": {
+      "type": "string",
+      "description": "CloudFormation stack name. Defaults to '{resourcePrefix}-{envName}'.",
+      "pattern": "^[a-zA-Z0-9-]{1,128}$"
+    },
+    "tags": {
+      "type": "object",
+      "description": "Additional tags applied to all stack resources.",
+      "additionalProperties": { "type": "string" },
+      "examples": [{ "project": "nery-saude", "client": "nery", "owner": "cesar" }]
+    },
+    "supabaseProjectRef": {
+      "type": "string",
+      "description": "Supabase project ref for dual-issuer JWT validation (Lovable Cloud integration). Optional."
+    },
+    "knowledgeBase": {
+      "type": "object",
+      "description": "Knowledge Base configuration for this client.",
+      "properties": {
+        "existingKnowledgeBaseId": {
+          "type": "string",
+          "description": "ID of a pre-existing Bedrock Knowledge Base to import (instead of creating new)."
+        },
+        "existingKnowledgeBaseArn": {
+          "type": "string",
+          "description": "ARN of a pre-existing Bedrock Knowledge Base to import."
+        },
+        "embeddingModelId": {
+          "type": "string",
+          "description": "Bedrock embedding model ID.",
+          "default": "amazon.titan-embed-text-v2:0"
+        }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "description": "Bedrock Agent configuration for this client.",
+      "properties": {
+        "modelId": {
+          "type": "string",
+          "description": "Bedrock model ID for the agent.",
+          "default": "amazon.nova-pro-v1:0"
+        },
+        "instructionOverride": {
+          "type": "string",
+          "description": "Override the default agent instruction text."
+        }
+      }
+    },
+    "cognito": {
+      "type": "object",
+      "description": "Cognito User Pool configuration for this client.",
+      "properties": {
+        "domainPrefix": {
+          "type": "string",
+          "description": "Custom domain prefix for the Cognito hosted UI."
+        },
+        "googleClientId": {
+          "type": "string",
+          "description": "Google OAuth client ID."
+        }
+      }
+    }
+  }
+}

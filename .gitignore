@@ -9,4 +9,6 @@ cdk.context.json
 .env
 .env.*
 coverage/
+# Per-client deployment configs (not versioned — contains client-specific names, prefixes, account IDs)
+deployments/
 

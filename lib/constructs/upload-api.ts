@@ -6,6 +6,8 @@ import * as lambdaNode from "aws-cdk-lib/aws-lambda-nodejs";
 
 export interface UploadApiProps {
   envName: string;
+  /** Prefix for named AWS resources (defaults to rag-knowledge-agent). */
+  resourcePrefix?: string;
   /** The upload-handler Lambda that signs presigned POSTs. */
   uploadHandler: lambdaNode.NodejsFunction;
   /** Dual-issuer (Cognito + Supabase) Lambda authorizer. */
@@ -27,7 +29,7 @@ export class UploadApi extends Construct {
     super(scope, id);
 
     this.httpApi = new apigwv2.HttpApi(this, "UploadApi", {
-      apiName: `rag-knowledge-agent-upload-${props.envName}`,
+      apiName: `${props.resourcePrefix ?? "rag-knowledge-agent"}-upload-${props.envName}`,
       corsPreflight: {
         // Tighten allowOrigins to the frontend URL once it exists.
         allowOrigins: ["*"],

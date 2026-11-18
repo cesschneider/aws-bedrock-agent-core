@@ -3,6 +3,8 @@ import { Construct } from "constructs";
 
 export interface VectorIndexProps {
   envName: string;
+  /** Prefix for named AWS resources (defaults to rag-knowledge-agent). */
+  resourcePrefix?: string;
 }
 
 /**
@@ -28,7 +30,7 @@ export class VectorIndex extends Construct {
   constructor(scope: Construct, id: string, props: VectorIndexProps) {
     super(scope, id);
 
-    const bucketName = `rag-knowledge-agent-vectors-${props.envName}`;
+    const bucketName = `${props.resourcePrefix ?? "rag-knowledge-agent"}-vectors-${props.envName}`;
     const indexName = "documents";
 
     this.vectorBucket = new cdk.CfnResource(this, "VectorBucket", {

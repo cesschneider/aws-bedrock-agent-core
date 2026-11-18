@@ -9,6 +9,8 @@ import * as path from "path";
 
 export interface DualIssuerAuthorizerProps {
   envName: string;
+  /** Prefix for named AWS resources (defaults to rag-knowledge-agent). */
+  resourcePrefix?: string;
   /** Cognito user pool ID (issuer for the Cognito path). */
   cognitoUserPoolId: string;
   /** Cognito app client ID (audience for the Cognito path). */
@@ -30,9 +32,11 @@ export interface DualIssuerAuthorizerProps {
  */
 export class DualIssuerAuthorizer extends Construct {
   public readonly fn: lambdaNode.NodejsFunction;
+  private readonly resourcePrefix: string;
 
   constructor(scope: Construct, id: string, props: DualIssuerAuthorizerProps) {
     super(scope, id);
+    this.resourcePrefix = props.resourcePrefix ?? "rag-knowledge-agent";
 
     const logGroup = new logs.LogGroup(this, "AuthorizerLogGroup", {
       retention: props.envName === "prd" ? logs.RetentionDays.ONE_MONTH : logs.RetentionDays.TWO_WEEKS,
@@ -65,7 +69,7 @@ export class DualIssuerAuthorizer extends Construct {
    */
   authorizerFor(scope: Construct, id: string): authorizers.HttpLambdaAuthorizer {
     return new authorizers.HttpLambdaAuthorizer(id, this.fn, {
-      authorizerName: `rag-knowledge-agent-dual-issuer-${scope.node.path.replace(/[^a-zA-Z0-9]/g, "-")}`,
+      authorizerName: `${this.resourcePrefix}-dual-issuer-${scope.node.path.replace(/[^a-zA-Z0-9]/g, "-")}`,
       responseTypes: [authorizers.HttpLambdaResponseType.SIMPLE],
       // Cache disabled: the authorizer resolves tenant from membership and
       // must not serve a stale context across token/tenant changes. JWKS are

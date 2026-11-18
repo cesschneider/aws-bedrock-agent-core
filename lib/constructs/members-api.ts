@@ -6,6 +6,8 @@ import * as lambdaNode from "aws-cdk-lib/aws-lambda-nodejs";
 
 export interface MembersApiProps {
   envName: string;
+  /** Prefix for named AWS resources (defaults to rag-knowledge-agent). */
+  resourcePrefix?: string;
   /** The members-handler Lambda that serves member management. */
   membersHandler: lambdaNode.NodejsFunction;
   /** Dual-issuer (Cognito + Supabase) Lambda authorizer. */
@@ -23,7 +25,7 @@ export class MembersApi extends Construct {
     super(scope, id);
 
     this.httpApi = new apigwv2.HttpApi(this, "MembersApi", {
-      apiName: `rag-knowledge-agent-members-${props.envName}`,
+      apiName: `${props.resourcePrefix ?? "rag-knowledge-agent"}-members-${props.envName}`,
       corsPreflight: {
         allowOrigins: ["*"],
         allowMethods: [

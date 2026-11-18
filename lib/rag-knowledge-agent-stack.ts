@@ -28,6 +28,11 @@ export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
   /** Deployment environment slug: dev | stg | prd */
   envName: string;
   /**
+   * Prefix for all named AWS resources (agent, APIs, buckets, tables, roles).
+   * Defaults to 'rag-knowledge-agent'. Set per-client via deployment config.
+   */
+  resourcePrefix?: string;
+  /**
    * Optional pre-resolved Google OAuth client secret. If omitted, the stack
    * resolves it at synthesis time via ssm.StringParameter.valueFromLookup.
    * Useful in tests where SSM context resolution isn't available.
@@ -53,6 +58,7 @@ export interface RagKnowledgeAgentStackProps extends cdk.StackProps {
  */
 export class RagKnowledgeAgentStack extends cdk.Stack {
   public readonly envName: string;
+  public readonly resourcePrefix: string;
   public readonly uploadPipeline: UploadPipeline;
   public readonly kbSync: KbSync;
   public readonly conversationHistory: ConversationHistory;
@@ -76,8 +82,9 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: RagKnowledgeAgentStackProps) {
     super(scope, id, props);
     this.envName = props.envName;
+    this.resourcePrefix = props.resourcePrefix ?? "rag-knowledge-agent";
 
-    cdk.Tags.of(this).add("project", "rag-knowledge-agent");
+    cdk.Tags.of(this).add("project", this.resourcePrefix);
     cdk.Tags.of(this).add("environment", this.envName);
 
     // Document registry — source of truth for the list/get/delete API. Must
@@ -85,16 +92,19 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
     // kb-sync trigger (which updates them to INDEXED).
     this.documentRegistry = new DocumentRegistry(this, "DocumentRegistry", {
       envName: this.envName,
+      resourcePrefix: this.resourcePrefix,
     });
 
     // Per-tenant catalog of administrable departments + normalized tags. The
     // upload pipeline validates tags against it (when seeded).
     this.tenantCatalog = new TenantCatalog(this, "TenantCatalog", {
       envName: this.envName,
+      resourcePrefix: this.resourcePrefix,
     });
 
     this.uploadPipeline = new UploadPipeline(this, "UploadPipeline", {
       envName: this.envName,
+      resourcePrefix: this.resourcePrefix,
       registryTable: this.documentRegistry.table,
       catalogTable: this.tenantCatalog.table,
     });
@@ -104,10 +114,12 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
     // resources in this project, ever).
     this.vectorIndex = new VectorIndex(this, "VectorIndex", {
       envName: this.envName,
+      resourcePrefix: this.resourcePrefix,
     });
 
     this.knowledgeBase = new KnowledgeBase(this, "KnowledgeBase", {
       envName: this.envName,
+      resourcePrefix: this.resourcePrefix,
       sourceBucket: this.uploadPipeline.bucket,
       vectorIndexArn: this.vectorIndex.indexArn,
     });
@@ -115,12 +127,14 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
 
     this.ragAgent = new RagAgent(this, "RagAgent", {
       envName: this.envName,
+      resourcePrefix: this.resourcePrefix,
       knowledgeBaseId: this.knowledgeBase.knowledgeBase.attrKnowledgeBaseId,
       knowledgeBaseArn: this.knowledgeBase.knowledgeBase.attrKnowledgeBaseArn,
     });
 
     this.kbSync = new KbSync(this, "KbSync", {
       envName: this.envName,
+      resourcePrefix: this.resourcePrefix,
       sourceBucket: this.uploadPipeline.bucket,
       knowledgeBaseId: this.knowledgeBase.knowledgeBase.attrKnowledgeBaseId,
       dataSourceId: this.knowledgeBase.dataSource.attrDataSourceId,
@@ -129,6 +143,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
 
     this.conversationHistory = new ConversationHistory(this, "ConversationHistory", {
       envName: this.envName,
+      resourcePrefix: this.resourcePrefix,
     });
 
     // Email → tenant membership registry (multi-user support). The first user
@@ -136,12 +151,14 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
     // the members API manages invitations and membership.
     this.tenantMembership = new TenantMembership(this, "TenantMembership", {
       envName: this.envName,
+      resourcePrefix: this.resourcePrefix,
     });
 
     // Organization registry (name-based org creation). Replaces the
     // domain→tenant registry: no domain action, no email-verification token.
     this.organization = new Organization(this, "Organization", {
       envName: this.envName,
+      resourcePrefix: this.resourcePrefix,
     });
 
     // Google OAuth client ID/secret and the Workspace admin service account
@@ -153,7 +170,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
     const googleClientSecret = props.googleClientSecretOverride ??
       ssm.StringParameter.valueFromLookup(
         this,
-        `/rag-knowledge-agent/${this.envName}/google-client-secret`
+        `${this.resourcePrefix}/${this.envName}/google-client-secret`
       );
 
     // Dev test user password (non-prd only) comes from a CDK context value
@@ -161,9 +178,10 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
     // skips the dev user instead of failing synthesis.
     this.identity = new Identity(this, "Identity", {
       envName: this.envName,
+      resourcePrefix: this.resourcePrefix,
       googleClientId: "PENDING-GOOGLE-OAUTH-CLIENT-ID",
       googleClientSecret,
-      googleServiceAccountKeyParam: `/rag-knowledge-agent/${this.envName}/google-service-account-key`,
+      googleServiceAccountKeyParam: `${this.resourcePrefix}/${this.envName}/google-service-account-key`,
       googleWorkspaceAdminEmail: `admin@${this.envName}.pending-setup.invalid`,
       tenantMembershipTable: this.tenantMembership.table,
       devTestUserPassword: props.devTestUserPassword,
@@ -171,6 +189,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
 
     this.chatHandler = new ChatHandler(this, "ChatHandler", {
       envName: this.envName,
+      resourcePrefix: this.resourcePrefix,
       conversationTable: this.conversationHistory.table,
       documentsBucket: this.uploadPipeline.bucket,
       cognitoUserPoolId: this.identity.userPool.userPoolId,
@@ -186,6 +205,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
     // HTTP APIs so the Lovable UI can call them with either token type.
     this.dualIssuerAuthorizer = new DualIssuerAuthorizer(this, "DualIssuerAuthorizer", {
       envName: this.envName,
+      resourcePrefix: this.resourcePrefix,
       cognitoUserPoolId: this.identity.userPool.userPoolId,
       cognitoClientId: this.identity.userPoolClient.userPoolClientId,
       supabaseProjectRef: props.supabaseProjectRef,
@@ -194,6 +214,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
 
     this.uploadApi = new UploadApi(this, "UploadApi", {
       envName: this.envName,
+      resourcePrefix: this.resourcePrefix,
       uploadHandler: this.uploadPipeline.uploadHandler,
       authorizer: this.dualIssuerAuthorizer.authorizerFor(this, "UploadApiAuthorizer"),
     });
@@ -214,6 +235,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
 
     this.documentsApi = new DocumentsApi(this, "DocumentsApi", {
       envName: this.envName,
+      resourcePrefix: this.resourcePrefix,
       documentsHandler,
       authorizer: this.dualIssuerAuthorizer.authorizerFor(this, "DocumentsApiAuthorizer"),
       documentsBucket: this.uploadPipeline.bucket,
@@ -223,6 +245,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
     // Public (no-auth) API documentation endpoint.
     this.docsApi = new DocsApi(this, "DocsApi", {
       envName: this.envName,
+      resourcePrefix: this.resourcePrefix,
     });
 
     // Per-tenant department + tag catalog API (admin-managed dropdowns and
@@ -243,6 +266,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
 
     this.catalogApi = new CatalogApi(this, "CatalogApi", {
       envName: this.envName,
+      resourcePrefix: this.resourcePrefix,
       catalogHandler,
       authorizer: this.dualIssuerAuthorizer.authorizerFor(this, "CatalogApiAuthorizer"),
     });
@@ -263,6 +287,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
 
     this.membersApi = new MembersApi(this, "MembersApi", {
       envName: this.envName,
+      resourcePrefix: this.resourcePrefix,
       membersHandler,
       authorizer: this.dualIssuerAuthorizer.authorizerFor(this, "MembersApiAuthorizer"),
     });
@@ -284,6 +309,7 @@ export class RagKnowledgeAgentStack extends cdk.Stack {
 
     this.organizationsApi = new OrganizationsApi(this, "OrganizationsApi", {
       envName: this.envName,
+      resourcePrefix: this.resourcePrefix,
       organizationsHandler,
       authorizer: this.dualIssuerAuthorizer.authorizerFor(this, "OrganizationsApiAuthorizer"),
     });

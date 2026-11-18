@@ -6,6 +6,8 @@ import * as bedrock from "aws-cdk-lib/aws-bedrock";
 
 export interface KnowledgeBaseProps {
   envName: string;
+  /** Prefix for named AWS resources (defaults to rag-knowledge-agent). */
+  resourcePrefix?: string;
   /** Bucket holding the raw documents Bedrock KB ingests from. */
   sourceBucket: s3.Bucket;
   /**
@@ -77,7 +79,7 @@ export class KnowledgeBase extends Construct {
     );
 
     this.knowledgeBase = new bedrock.CfnKnowledgeBase(this, "KnowledgeBase", {
-      name: `rag-knowledge-agent-${props.envName}`,
+      name: `${props.resourcePrefix ?? "rag-knowledge-agent"}-${props.envName}`,
       roleArn: this.role.roleArn,
       knowledgeBaseConfiguration: {
         type: "VECTOR",

@@ -6,6 +6,8 @@ import * as lambdaNode from "aws-cdk-lib/aws-lambda-nodejs";
 
 export interface OrganizationsApiProps {
   envName: string;
+  /** Prefix for named AWS resources (defaults to rag-knowledge-agent). */
+  resourcePrefix?: string;
   /** The organizations-handler Lambda that serves name check + creation. */
   organizationsHandler: lambdaNode.NodejsFunction;
   /** Dual-issuer (Cognito + Supabase) Lambda authorizer. */
@@ -24,7 +26,7 @@ export class OrganizationsApi extends Construct {
     super(scope, id);
 
     this.httpApi = new apigwv2.HttpApi(this, "OrganizationsApi", {
-      apiName: `rag-knowledge-agent-organizations-${props.envName}`,
+      apiName: `${props.resourcePrefix ?? "rag-knowledge-agent"}-organizations-${props.envName}`,
       corsPreflight: {
         allowOrigins: ["*"],
         allowMethods: [

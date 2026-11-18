@@ -13,6 +13,8 @@ function retentionFor(envName: string): logs.RetentionDays {
 
 export interface UploadPipelineProps {
   envName: string;
+  /** Prefix for named AWS resources (defaults to rag-knowledge-agent). */
+  resourcePrefix?: string;
   /** Document registry table the upload-handler writes PENDING records to. */
   registryTable: dynamodb.Table;
   /** Tenant catalog table the upload-handler validates tags against. */
