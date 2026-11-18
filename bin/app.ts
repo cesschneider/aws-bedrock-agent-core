@@ -38,6 +38,13 @@ const envName = config.envName;
 // real SSM lookup happens there.
 const hasAwsContext = Boolean(process.env.CDK_DEFAULT_ACCOUNT);
 
+// Google OAuth client secret — passed via CDK context from a GitHub Environment
+// secret at deploy time, or resolved via SSM lookup at synthesis time.
+// In CI (synth-only), a placeholder is used instead.
+const googleClientSecretOverride =
+  nonEmptyContext(app, "google-client-secret") ??
+  (hasAwsContext ? undefined : "ci-synth-placeholder");
+
 // Dev test user password (non-prd only) is passed via CDK context from a
 // GitHub Environment secret (DEV_TEST_USER_PASSWORD) at deploy time — see
 // .github/workflows/deploy.yml. Absent/empty ⇒ no dev user is created (the
@@ -62,7 +69,7 @@ const stack = new RagKnowledgeAgentStack(app, stackName, {
     account: config.account || process.env.CDK_DEFAULT_ACCOUNT,
     region: config.region,
   },
-  ...(!hasAwsContext && { googleClientSecretOverride: "ci-synth-placeholder" }),
+  ...(googleClientSecretOverride && { googleClientSecretOverride }),
   ...(devTestUserPassword && { devTestUserPassword }),
   ...(supabaseProjectRef && { supabaseProjectRef }),
 });
