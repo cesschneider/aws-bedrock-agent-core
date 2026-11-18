@@ -6,6 +6,8 @@ import * as lambdaNode from "aws-cdk-lib/aws-lambda-nodejs";
 
 export interface CatalogApiProps {
   envName: string;
+  /** Prefix for named AWS resources (defaults to rag-knowledge-agent). */
+  resourcePrefix?: string;
   /** The catalog-handler Lambda that serves department/tag management. */
   catalogHandler: lambdaNode.NodejsFunction;
   /** Dual-issuer (Cognito + Supabase) Lambda authorizer. */
@@ -23,7 +25,7 @@ export class CatalogApi extends Construct {
     super(scope, id);
 
     this.httpApi = new apigwv2.HttpApi(this, "CatalogApi", {
-      apiName: `rag-knowledge-agent-catalog-${props.envName}`,
+      apiName: `${props.resourcePrefix ?? "rag-knowledge-agent"}-catalog-${props.envName}`,
       corsPreflight: {
         allowOrigins: ["*"],
         allowMethods: [

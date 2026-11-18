@@ -8,6 +8,8 @@ import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 
 export interface DocumentsApiProps {
   envName: string;
+  /** Prefix for named AWS resources (defaults to rag-knowledge-agent). */
+  resourcePrefix?: string;
   /** The documents-handler Lambda that serves list/get/delete. */
   documentsHandler: lambdaNode.NodejsFunction;
   /** Dual-issuer (Cognito + Supabase) Lambda authorizer. */
@@ -30,7 +32,7 @@ export class DocumentsApi extends Construct {
     super(scope, id);
 
     this.httpApi = new apigwv2.HttpApi(this, "DocumentsApi", {
-      apiName: `rag-knowledge-agent-documents-${props.envName}`,
+      apiName: `${props.resourcePrefix ?? "rag-knowledge-agent"}-documents-${props.envName}`,
       corsPreflight: {
         allowOrigins: ["*"],
         allowMethods: [

@@ -5,6 +5,8 @@ import * as bedrock from "aws-cdk-lib/aws-bedrock";
 
 export interface RagAgentProps {
   envName: string;
+  /** Prefix for named AWS resources (defaults to rag-knowledge-agent). */
+  resourcePrefix?: string;
   /** Knowledge base the agent retrieves from. */
   knowledgeBaseId: string;
   knowledgeBaseArn: string;
@@ -70,7 +72,7 @@ export class RagAgent extends Construct {
     );
 
     this.agent = new bedrock.CfnAgent(this, "Agent", {
-      agentName: `rag-knowledge-agent-${props.envName}`,
+      agentName: `${props.resourcePrefix ?? "rag-knowledge-agent"}-${props.envName}`,
       agentResourceRoleArn: this.role.roleArn,
       foundationModel,
       instruction: AGENT_INSTRUCTION,

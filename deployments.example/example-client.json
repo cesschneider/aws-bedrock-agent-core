@@ -1,0 +1,27 @@
+{
+  "clientSlug": "example-client",
+  "envName": "dev",
+  "account": "123456789012",
+  "region": "us-east-1",
+  "resourcePrefix": "example-rag",
+  "stackName": "example-rag-dev",
+  "tags": {
+    "project": "example-project",
+    "client": "example-client",
+    "owner": "your-name"
+  },
+  "supabaseProjectRef": "",
+  "knowledgeBase": {
+    "existingKnowledgeBaseId": "",
+    "existingKnowledgeBaseArn": "",
+    "embeddingModelId": "amazon.titan-embed-text-v2:0"
+  },
+  "agent": {
+    "modelId": "amazon.nova-pro-v1:0",
+    "instructionOverride": ""
+  },
+  "cognito": {
+    "domainPrefix": "example-rag-dev",
+    "googleClientId": ""
+  }
+}

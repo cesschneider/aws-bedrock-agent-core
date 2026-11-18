@@ -11,6 +11,8 @@ import * as path from "path";
 
 export interface IdentityProps {
   envName: string;
+  /** Prefix for named AWS resources (defaults to rag-knowledge-agent). */
+  resourcePrefix?: string;
   /**
    * Google OAuth client secret. Must be resolved BEFORE passing to this
    * construct (e.g. via ssm.StringParameter.valueFromLookup in the parent
@@ -96,7 +98,7 @@ export class Identity extends Construct {
     props.tenantMembershipTable?.grantReadData(preTokenGeneration);
 
     this.userPool = new cognito.UserPool(this, "UserPool", {
-      userPoolName: `rag-knowledge-agent-${props.envName}`,
+      userPoolName: `${props.resourcePrefix ?? "rag-knowledge-agent"}-${props.envName}`,
       selfSignUpEnabled: false, // identity is federated from Google Workspace only
       signInAliases: { email: true },
       removalPolicy: props.envName === "prd" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,

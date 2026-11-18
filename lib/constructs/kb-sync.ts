@@ -13,6 +13,8 @@ import * as path from "path";
 
 export interface KbSyncProps {
   envName: string;
+  /** Prefix for named AWS resources (defaults to rag-knowledge-agent). */
+  resourcePrefix?: string;
   sourceBucket: s3.Bucket;
   /**
    * Bedrock Knowledge Base + data source IDs are supplied once that construct

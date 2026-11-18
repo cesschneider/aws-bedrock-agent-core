@@ -14,6 +14,8 @@ function retentionFor(envName: string): logs.RetentionDays {
 
 export interface ChatHandlerProps {
   envName: string;
+  /** Prefix for named AWS resources (defaults to rag-knowledge-agent). */
+  resourcePrefix?: string;
   /** DynamoDB table for per-user conversation history persistence. */
   conversationTable: dynamodb.Table;
   /** S3 bucket for presigned citation download URLs. */
